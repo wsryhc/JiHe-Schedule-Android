@@ -1,0 +1,2 @@
+JiHe-0.0.1beta-arm64.apk filter=lfs diff=lfs merge=lfs -text
+JiHe-Schedule-Source-v0.0.1beta.zip filter=lfs diff=lfs merge=lfs -text
