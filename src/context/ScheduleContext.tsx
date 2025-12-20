@@ -237,9 +237,16 @@ export const ScheduleProvider = ({ children }: any) => {
                 if (jsonValue != null) {
                     const data = JSON.parse(jsonValue);
                     if (data.weekendConfig) setWeekendConfig(data.weekendConfig);
-                    if (data.periodConfig) setPeriodConfig(data.periodConfig);
-                    if (data.timeLayout) setTimeLayout(data.timeLayout);
-                    else setTimeLayout(generateTimeLayout(data.periodConfig || { morning: 4, afternoon: 4, evening: 4 }));
+                    // 初始化时生成布局
+                    if (data.periodConfig) {
+                        setPeriodConfig(data.periodConfig);
+                        setTimeLayout(generateTimeLayout(data.periodConfig)); // 🔥 确保这里同步生成
+                    } else {
+                        setTimeLayout(generateTimeLayout({ morning: 4, afternoon: 4, evening: 4 }));
+                    }
+
+                    if (data.timeLayout && data.timeLayout.length > 0) setTimeLayout(data.timeLayout);
+
                     if (data.courseList) setCourseList(data.courseList);
                     setScheduleList(data.scheduleList || []);
                     setCurrentSchedule(data.currentSchedule);
@@ -287,6 +294,13 @@ export const ScheduleProvider = ({ children }: any) => {
         scheduleList, currentSchedule, currentWeek, todoList,
         isLoaded, theme, displayConfig, notificationConfig
     ]);
+
+    // 🔥🔥 核心修复：更新节数配置时，强制重算时间布局
+    const handleUpdatePeriodConfig = (config: PeriodConfig) => {
+        setPeriodConfig(config);
+        const newLayout = generateTimeLayout(config);
+        setTimeLayout(newLayout); // 立即更新 Context 中的 Layout
+    };
 
     const updateWeekendConfig = (config: Partial<WeekendConfig>) => setWeekendConfig(prev => ({ ...prev, ...config }));
     const createSchedule = (name: string, startDate: string, totalWeeks = 25) => {
@@ -404,7 +418,6 @@ export const ScheduleProvider = ({ children }: any) => {
         }
     };
 
-    // 🔥 2. 新增：立即发送测试通知
     const sendTestNotification = async () => {
         try {
             await Notifications.scheduleNotificationAsync({
@@ -557,11 +570,7 @@ export const ScheduleProvider = ({ children }: any) => {
             setTimeLayout(generateTimeLayout({ morning: 4, afternoon: 4, evening: 4 }));
             setCurrentWeek(1);
             setNotificationConfig(DEFAULT_NOTIFICATION_CONFIG);
-            // 🔥 更新：重置时也清空日程页的个性化设置
-            if (updateCustomSettings) updateCustomSettings({
-                backgroundImage: null, bgImageOpacity: 1, borderOpacity: 0.1, courseOpacity: 0.85, transparentHeader: false, forceWhiteContent: false,
-                remindBackgroundImage: null, remindBgImageOpacity: 1, remindTransparentHeader: false, remindForceWhiteContent: false
-            });
+            if (updateCustomSettings) updateCustomSettings({ backgroundImage: null, bgImageOpacity: 1, borderOpacity: 0.1, courseOpacity: 0.85, transparentHeader: false, forceWhiteContent: false });
         } catch (e) { console.error("重置失败", e); }
     };
 
@@ -570,15 +579,16 @@ export const ScheduleProvider = ({ children }: any) => {
     };
 
     return (
+        // 🔥 将新的 update 函数传给 Provider
         <ScheduleContext.Provider value={{
-            weekendConfig, updateWeekendConfig, periodConfig, setPeriodConfig, updatePeriodConfig: setPeriodConfig,
+            weekendConfig, updateWeekendConfig, periodConfig, setPeriodConfig, updatePeriodConfig: handleUpdatePeriodConfig,
             timeLayout, setTimeLayout, updateTimeLayout: setTimeLayout, periodList: timeLayout.map(t => t.id),
             courseList, addCourse, updateCourse, deleteCourse, scheduleList, currentSchedule, createSchedule, switchSchedule, updateScheduleInfo,
             currentWeek, setCurrentWeek, todoList, addTodo, updateTodo, deleteTodo, setTodoList,
             displayConfig, setDisplayConfig, updateDisplayConfig: setDisplayConfig,
             deleteSchedule, clearAllSchedules, exportScheduleData, importScheduleData, resetToDefault,
             exportTodoData, batchAddTodos,
-            notificationConfig, updateNotificationConfig, sendTestNotification // 🔥 暴露给 UI
+            notificationConfig, updateNotificationConfig, sendTestNotification
         }}>
             {children}
         </ScheduleContext.Provider>

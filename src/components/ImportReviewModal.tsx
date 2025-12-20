@@ -473,7 +473,7 @@ export function ImportReviewModal({ visible, onDismiss, onConfirm, initialCourse
                         </Modal>
                     </Portal>
 
-                    {/* 🔥 4. 新增：节次选择器 Modal (1-18) */}
+                    {/* 🔥 4. 新增：节次选择器 Modal (1-12) */}
                     <Portal>
                         <Modal visible={periodSelectorVisible} onDismiss={() => setPeriodSelectorVisible(false)} contentContainerStyle={{ padding: 20, alignItems: 'center', justifyContent: 'center' }}>
                             <Surface style={{ padding: 20, borderRadius: 12, backgroundColor: theme.card, width: '85%', maxWidth: 320 }}>
@@ -481,7 +481,8 @@ export function ImportReviewModal({ visible, onDismiss, onConfirm, initialCourse
                                     选择{periodSelectorType === 'start' ? '开始' : '结束'}节次
                                 </Text>
                                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10 }}>
-                                    {Array.from({ length: 18 }, (_, i) => i + 1).map(num => (
+                                    {/* 🔥 修改：从18改为12 */}
+                                    {Array.from({ length: 12 }, (_, i) => i + 1).map(num => (
                                         <TouchableOpacity
                                             key={num}
                                             style={{

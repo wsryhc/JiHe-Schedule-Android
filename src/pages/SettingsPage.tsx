@@ -26,7 +26,6 @@ export default function SettingsPage() {
     const [customModalVisible, setCustomModalVisible] = useState(false);
 
     const [opacityModalVisible, setOpacityModalVisible] = useState(false);
-    // 🔥 增加 remindItem 和 remindCalendar 目标
     const [opacityTarget, setOpacityTarget] = useState<'bg' | 'border' | 'course' | 'remindBg' | 'remindItem' | 'remindCalendar' | null>(null);
     const [tempOpacity, setTempOpacity] = useState(0);
 
@@ -64,7 +63,7 @@ export default function SettingsPage() {
         if (target === 'border') currentVal = customSettings.borderOpacity ?? 0.1;
         if (target === 'course') currentVal = customSettings.courseOpacity ?? 0.85;
         if (target === 'remindBg') currentVal = customSettings.remindBgImageOpacity ?? 1;
-        // 🔥 新增
+
         if (target === 'remindItem') currentVal = customSettings.remindItemOpacity ?? 0.85;
         if (target === 'remindCalendar') currentVal = customSettings.remindCalendarCellOpacity ?? 0.1;
 
@@ -78,7 +77,7 @@ export default function SettingsPage() {
         if (opacityTarget === 'border') updateCustomSettings({ borderOpacity: val });
         if (opacityTarget === 'course') updateCustomSettings({ courseOpacity: val });
         if (opacityTarget === 'remindBg') updateCustomSettings({ remindBgImageOpacity: val });
-        // 🔥 新增保存
+
         if (opacityTarget === 'remindItem') updateCustomSettings({ remindItemOpacity: val });
         if (opacityTarget === 'remindCalendar') updateCustomSettings({ remindCalendarCellOpacity: val });
 
@@ -113,7 +112,8 @@ export default function SettingsPage() {
     };
 
     const PeriodSelector = ({ label, value, onChange }: any) => {
-        const options = [0, 1, 2, 3, 4, 5, 6];
+        // 🔥 修改：可选项为 [1, 2, 3, 4]
+        const options = [1, 2, 3, 4];
         return (
             <View style={{ marginBottom: 25 }}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
@@ -158,8 +158,8 @@ export default function SettingsPage() {
             case 'border': return '调节边框不透明度';
             case 'course': return '调节色块不透明度';
             case 'remindBg': return '调节日程页背景不透明度';
-            case 'remindItem': return '调节事项区域透明度';
-            case 'remindCalendar': return '调节日历背景透明度';
+            case 'remindItem': return '调节事项区域不透明度';
+            case 'remindCalendar': return '调节日历背景不透明度';
             default: return '调节透明度';
         }
     };
@@ -308,10 +308,10 @@ export default function SettingsPage() {
                                 <OpacityRow label="背景图不透明度" icon="image-outline" value={customSettings.remindBgImageOpacity ?? 1} target="remindBg" />
                                 <Divider style={{ marginVertical: 5 }} />
 
-                                {/* 🔥 新增调节选项 */}
-                                <OpacityRow label="事项区域透明度" icon="card-text-outline" value={customSettings.remindItemOpacity ?? 0.85} target="remindItem" />
+                                {/* 🔥 修改文案 */}
+                                <OpacityRow label="事项区域不透明度" icon="card-text-outline" value={customSettings.remindItemOpacity ?? 0.85} target="remindItem" />
                                 <Divider style={{ marginVertical: 5 }} />
-                                <OpacityRow label="日历背景透明度" icon="calendar-blank-outline" value={customSettings.remindCalendarCellOpacity ?? 0.1} target="remindCalendar" />
+                                <OpacityRow label="日历背景不透明度" icon="calendar-blank-outline" value={customSettings.remindCalendarCellOpacity ?? 0.1} target="remindCalendar" />
 
                                 <Divider style={{ marginVertical: 5 }} />
                                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 5 }}>
@@ -506,7 +506,7 @@ export default function SettingsPage() {
                 <Modal visible={customModalVisible} onDismiss={() => setCustomModalVisible(false)} contentContainerStyle={[styles.modalBox, { backgroundColor: theme.card }]}>
                     <Text style={[styles.modalTitle, { color: theme.text }]}>项目说明</Text>
                     <ScrollView style={{ maxHeight: 300 }}>
-                        <Text style={{ color: theme.text, fontSize: 16, lineHeight: 24 }}>欢迎提出意见,当前测试次数少,可能还存在很多bug。安卓端测试完成即可开发ios和Windows端软件。</Text>
+                        <Text style={{ color: theme.text, fontSize: 16, lineHeight: 24 }}>欢迎提出意见，当前可能还存在很多bug，测试次数少。安卓端测试完成即可开发ios和Windows端软件。</Text>
                     </ScrollView>
                     <Button mode="contained" onPress={() => setCustomModalVisible(false)} buttonColor={theme.primary} style={{ marginTop: 20 }}>关闭</Button>
                 </Modal>
