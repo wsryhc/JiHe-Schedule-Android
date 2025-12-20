@@ -1,14 +1,13 @@
 {
   "expo": {
-    "name": "my-app",
-    "slug": "my-app",
-    "version": "1.0.0",
+    "name": "集盒",
+    "slug": "JiHe",
+    "version": "0.0.1beta",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "userInterfaceStyle": "automatic",
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -20,11 +19,83 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "package": "com.myapp.schedule"
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-image-picker",
+      "expo-document-picker",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#ffffff",
+          "image": "./assets/splash.png",
+          "imageResizeMode": "contain",
+          "dark": {
+            "image": "./assets/splash.png",
+            "backgroundColor": "#121212"
+          }
+        }
+      ],
+      [
+        "react-native-android-widget",
+        {
+          "widgetTaskHandlerModule": "./widget-task-handler.tsx",
+          "widgets": [
+            {
+              "name": "TodoWidget",
+              "label": "今日安排 (4x2)",
+              "previewImage": "./assets/widget4x2.png",
+              "minWidth": "300dp",
+              "minHeight": "90dp",
+              "description": "4x2 标准布局",
+              "widgetCategory": "home_screen",
+              "android": {
+                "widgetDescriptor": {
+                  "category": "home_screen",
+                  "label": "今日安排 (4x2)",
+                  "description": "4x2 标准布局"
+                }
+              }
+            },
+            {
+              "name": "TodoWidget3x2",
+              "label": "今日安排 (3x2)",
+              "previewImage": "./assets/widget3x2.png",
+              "minWidth": "200dp",
+              "minHeight": "90dp",
+              "description": "3x2 紧凑布局",
+              "widgetCategory": "home_screen",
+              "android": {
+                "widgetDescriptor": {
+                  "category": "home_screen",
+                  "label": "今日安排 (3x2)",
+                  "description": "3x2 紧凑布局"
+                }
+              }
+            },
+            {
+              "name": "TodoWidgetLarge",
+              "label": "今日安排 (4x4)",
+              "previewImage": "./assets/widget4x4.png",
+              "minWidth": "300dp",
+              "minHeight": "180dp",
+              "description": "4x4 详细列表",
+              "widgetCategory": "home_screen",
+              "android": {
+                "widgetDescriptor": {
+                  "category": "home_screen",
+                  "label": "今日安排 (4x4)",
+                  "description": "4x4 详细列表"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "expo-asset"
+    ]
   }
 }
