@@ -91,6 +91,38 @@
                   "description": "4x4 详细列表"
                 }
               }
+            },
+            {
+              "name": "TodoWidgetSafe",
+              "label": "异常使用 (4x2)",
+              "previewImage": "./assets/widget4x2.png",
+              "minWidth": "300dp",
+              "minHeight": "90dp",
+              "description": "4x2 缩放修复版 (四周留白)",
+              "widgetCategory": "home_screen",
+              "android": {
+                "widgetDescriptor": {
+                  "category": "home_screen",
+                  "label": "异常使用 (4x2)",
+                  "description": "4x2 缩放修复版 (四周留白)"
+                }
+              }
+            },
+            {
+              "name": "TodoWidgetLargeSafe",
+              "label": "异常使用 (4x4)",
+              "previewImage": "./assets/widget4x4.png",
+              "minWidth": "300dp",
+              "minHeight": "180dp",
+              "description": "4x4 缩放修复版 (四周留白)",
+              "widgetCategory": "home_screen",
+              "android": {
+                "widgetDescriptor": {
+                  "category": "home_screen",
+                  "label": "异常使用 (4x4)",
+                  "description": "4x4 缩放修复版 (四周留白)"
+                }
+              }
             }
           ]
         }

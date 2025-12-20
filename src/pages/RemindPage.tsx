@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, StatusBar, Alert } from 'react-native';
+// src/pages/RemindPage.tsx
+import React, { useState, useEffect, useMemo, useLayoutEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, StatusBar, ImageBackground, Platform, Alert } from 'react-native';
 import { Surface, Checkbox, SegmentedButtons, IconButton, Modal, Portal, Button } from 'react-native-paper';
-import { useTheme } from '../context/ThemeContext';
-import { useSchedule, Course, TimeSlot, Todo, checkTodoOnDate } from '../context/ScheduleContext';
+import { useTheme, setAlpha } from '../context/ThemeContext';
+import { useSchedule, Course, Todo, checkTodoOnDate } from '../context/ScheduleContext';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
 
@@ -37,12 +38,12 @@ const getNowTimeStr = () => {
 const TODAY = getTodayStr();
 
 export default function RemindPage() {
-    const { theme } = useTheme();
-    const navigation = useNavigation<any>(); 
+    const { theme, customSettings } = useTheme();
+    const navigation = useNavigation<any>();
     const isFocused = useIsFocused();
     const {
         courseList, currentSchedule, timeLayout, todoList, updateTodo,
-        displayConfig, setTodoList // 🔥 需要用到 setTodoList 批量操作
+        displayConfig, setTodoList
     } = useSchedule();
 
     const [viewMode, setViewMode] = useState<string>('list');
@@ -50,9 +51,13 @@ export default function RemindPage() {
     const [currentMonthDate, setCurrentMonthDate] = useState(new Date());
 
     const [nowTime, setNowTime] = useState(getNowTimeStr());
-    
-    // 🔥 批量删除菜单状态
     const [deleteMenuVisible, setDeleteMenuVisible] = useState(false);
+
+    useLayoutEffect(() => {
+        navigation.setOptions({
+            headerShown: false,
+        });
+    }, [navigation]);
 
     useEffect(() => {
         const timer = setInterval(() => {
@@ -60,6 +65,76 @@ export default function RemindPage() {
         }, 60000);
         return () => clearInterval(timer);
     }, []);
+
+    const shouldForceWhite = customSettings.remindBackgroundImage && customSettings.remindForceWhiteContent;
+    const dynamicTheme = useMemo(() => {
+        if (shouldForceWhite) {
+            return { ...theme, text: '#FFFFFF', subText: 'rgba(255, 255, 255, 0.85)' };
+        }
+        return theme;
+    }, [theme, shouldForceWhite]);
+
+    // 自定义 Header
+    const CustomHeader = () => {
+        const isTransparent = customSettings.remindBackgroundImage && customSettings.remindTransparentHeader;
+        const backgroundColor = isTransparent ? 'transparent' : theme.card;
+
+        const statusBarHeight = Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 44;
+
+        return (
+            <View style={{
+                width: '100%',
+                backgroundColor: backgroundColor,
+                paddingTop: statusBarHeight,
+                zIndex: 100,
+                elevation: isTransparent ? 0 : 2,
+            }}>
+                <View style={{
+                    height: 44,
+                    width: '100%',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                }}>
+                    <Text style={{
+                        fontSize: 18,
+                        fontWeight: 'bold',
+                        color: dynamicTheme.text
+                    }}>待办</Text>
+                </View>
+            </View>
+        );
+    };
+
+    const RootContainer = ({ children }: any) => {
+        let statusBarStyle: 'light-content' | 'dark-content' = theme.dark ? 'light-content' : 'dark-content';
+        const isTransparentHeader = customSettings.remindBackgroundImage && customSettings.remindTransparentHeader;
+
+        if (shouldForceWhite || isTransparentHeader) {
+            statusBarStyle = 'light-content';
+        }
+
+        if (customSettings.remindBackgroundImage) {
+            return (
+                <ImageBackground
+                    source={{ uri: customSettings.remindBackgroundImage }}
+                    style={{ flex: 1 }}
+                    imageStyle={{ opacity: customSettings.remindBgImageOpacity ?? 1 }}
+                    resizeMode="cover"
+                >
+                    {isFocused && <StatusBar barStyle={statusBarStyle} backgroundColor="transparent" translucent={true} />}
+                    <CustomHeader />
+                    <View style={{ flex: 1 }}>{children}</View>
+                </ImageBackground>
+            );
+        }
+        return (
+            <View style={{ flex: 1, backgroundColor: theme.background }}>
+                {isFocused && <StatusBar barStyle={statusBarStyle} backgroundColor={theme.background} />}
+                <CustomHeader />
+                <View style={{ flex: 1 }}>{children}</View>
+            </View>
+        );
+    };
 
     const getWeekNumber = (dateStr: string) => {
         if (!currentSchedule) return -1;
@@ -73,13 +148,13 @@ export default function RemindPage() {
 
     const getMergedItems = (dateStr: string): DisplayItem[] => {
         const targetDate = new Date(dateStr);
-        const dayOfWeek = targetDate.getDay() === 0 ? 6 : targetDate.getDay() - 1; 
+        const dayOfWeek = targetDate.getDay() === 0 ? 6 : targetDate.getDay() - 1;
         const weekNum = getWeekNumber(dateStr);
 
         let todoItems: DisplayItem[] = [];
         if (displayConfig.inApp.showTodo) {
             todoItems = todoList
-                .filter(t => checkTodoOnDate(t, dateStr)) 
+                .filter(t => checkTodoOnDate(t, dateStr))
                 .map(t => ({
                     id: `todo-${t.id}`,
                     type: 'todo',
@@ -109,7 +184,7 @@ export default function RemindPage() {
 
                 let isCompleted = false;
                 if (dateStr < TODAY) {
-                    isCompleted = true; 
+                    isCompleted = true;
                 } else if (dateStr === TODAY) {
                     if (nowTime > endTime) {
                         isCompleted = true;
@@ -148,8 +223,6 @@ export default function RemindPage() {
         }
     };
 
-    // 🔥🔥 批量删除逻辑开始 🔥🔥
-
     const handleDeleteAllTodos = () => {
         setDeleteMenuVisible(false);
         Alert.alert(
@@ -165,23 +238,11 @@ export default function RemindPage() {
     const handleDeleteTodayTodos = () => {
         setDeleteMenuVisible(false);
         const targetDateTodos = todoList.filter(t => checkTodoOnDate(t, selectedDateStr));
-        
-        if (targetDateTodos.length === 0) {
-            Alert.alert('提示', '当天没有待办事项');
-            return;
-        }
-
+        if (targetDateTodos.length === 0) { Alert.alert('提示', '当天没有待办事项'); return; }
         Alert.alert(
             '删除当天待办',
             `确定要删除 ${selectedDateStr} 的所有待办事项吗？`,
-            [
-                { text: '取消', style: 'cancel' },
-                { 
-                    text: '确定删除', 
-                    style: 'destructive', 
-                    onPress: () => processDeleteToday(targetDateTodos)
-                }
-            ]
+            [{ text: '取消', style: 'cancel' }, { text: '确定删除', style: 'destructive', onPress: () => processDeleteToday(targetDateTodos) }]
         );
     };
 
@@ -189,56 +250,32 @@ export default function RemindPage() {
         const repeatingTodos = todosToDelete.filter(t => (t.repeatType && t.repeatType !== 'none') || t.isYearly);
         const normalTodos = todosToDelete.filter(t => !((t.repeatType && t.repeatType !== 'none') || t.isYearly));
 
-        // 1. 先删除不重复的
-        if (normalTodos.length > 0) {
-            const normalIds = normalTodos.map(t => t.id);
-            // 更新全局列表，移除这些 ID
-            // 注意：不能直接 setTodoList，要基于 prev，但这里为了简单先获取 current todoList
-            // 由于 todoList 在闭包里可能旧，最好用 functional update 或者确信 todoList 是新的
-            // 这里逻辑有点复杂，我们先构造一个新的 full list
-        }
-
         if (repeatingTodos.length > 0) {
-            // 询问重复待办的处理方式
             Alert.alert(
                 '包含重复待办',
                 '检测到有重复的待办事项。您希望如何处理它们？',
                 [
                     { text: '取消', style: 'cancel' },
-                    { 
-                        text: '仅删除今天', 
-                        onPress: () => executeDelete(normalTodos, repeatingTodos, 'today-only') 
-                    },
-                    { 
-                        text: '删除全部系列', 
-                        style: 'destructive',
-                        onPress: () => executeDelete(normalTodos, repeatingTodos, 'series') 
-                    }
+                    { text: '仅删除今天', onPress: () => executeDelete(normalTodos, repeatingTodos, 'today-only') },
+                    { text: '删除全部系列', style: 'destructive', onPress: () => executeDelete(normalTodos, repeatingTodos, 'series') }
                 ]
             );
         } else {
-            // 只有普通待办，直接删除
             executeDelete(normalTodos, [], 'series');
         }
     };
 
     const executeDelete = (normalTodos: Todo[], repeatingTodos: Todo[], mode: 'today-only' | 'series') => {
         let newList = [...todoList];
-
-        // 1. 删除普通待办
         const normalIds = normalTodos.map(t => t.id);
         newList = newList.filter(t => !normalIds.includes(t.id));
 
-        // 2. 处理重复待办
         if (repeatingTodos.length > 0) {
             if (mode === 'series') {
-                // 删除整个系列 -> 直接移除
                 const repeatingIds = repeatingTodos.map(t => t.id);
                 newList = newList.filter(t => !repeatingIds.includes(t.id));
             } else {
-                // 仅删除今天 -> 推迟开始日期 (Skip current instance)
                 const current = new Date(selectedDateStr);
-                
                 repeatingTodos.forEach(todo => {
                     const todoIndex = newList.findIndex(t => t.id === todo.id);
                     if (todoIndex !== -1) {
@@ -248,45 +285,20 @@ export default function RemindPage() {
                 });
             }
         }
-
         setTodoList(newList);
     };
 
     const calculateNextOccurrence = (todo: Todo, currentOccurrence: Date): string => {
         const type = todo.repeatType || (todo.isYearly ? 'yearly' : 'none');
         const next = new Date(currentOccurrence);
-
-        if (type === 'weekly') {
-            next.setDate(next.getDate() + 7);
-        } else if (type === 'monthly') {
-            // 简单加一个月
-            next.setMonth(next.getMonth() + 1);
-            // 处理溢出：如果今天是 1月31，加一个月变成 3月3 (平年)，通常期望是 2月28
-            // 我们的 checkTodoOnDate 逻辑是“如果开始日大于目标月天数，显示在最后一天”
-            // 所以这里我们尽量保持原本的“日”，但 setMonth 会自动溢出。
-            // 比如 next原本是 1/31。 setMonth(2) -> 3/3 (or 2).
-            // 我们需要校正回 2月底吗？
-            // 这里的策略是：直接修改 Start Date。
-            // 如果原来的 Start Date 是 31号，新 Start Date 变成 2月28号？
-            // 那以后就变成 28号重复了。
-            // 更好的做法是：保持 Start Date 的 Day 不变，逻辑里去处理。
-            // 但用户要求“推迟”，即修改数据。
-            // 简化处理：推迟到下个月的同一天，如果下个月没那天，就推到下个月最后一天。
-            
-            // 为了更严谨，我们应该获取原始 Todo 的 Start Day (todo.date)，而不是 currentOccurrence
-            // 但如果之前已经推迟过，todo.date 已经是变过的了。
-            // 所以这里直接基于 currentOccurrence 加一个月即可。
-        } else if (type === 'yearly') {
-            next.setFullYear(next.getFullYear() + 1);
-        }
-
+        if (type === 'weekly') next.setDate(next.getDate() + 7);
+        else if (type === 'monthly') next.setMonth(next.getMonth() + 1);
+        else if (type === 'yearly') next.setFullYear(next.getFullYear() + 1);
         const y = next.getFullYear();
         const m = String(next.getMonth() + 1).padStart(2, '0');
         const d = String(next.getDate()).padStart(2, '0');
         return `${y}-${m}-${d}`;
     };
-
-    // 🔥🔥 批量删除逻辑结束 🔥🔥
 
     const changeDay = (offset: number) => {
         const [y, m, d] = selectedDateStr.split('-').map(Number);
@@ -320,8 +332,8 @@ export default function RemindPage() {
                 contentContainerStyle={styles.listContent}
                 ListEmptyComponent={
                     <View style={{ alignItems: 'center', marginTop: 50 }}>
-                        <Ionicons name="file-tray-outline" size={48} color={theme.subText} />
-                        <Text style={{ color: theme.subText, marginTop: 10 }}>
+                        <Ionicons name="file-tray-outline" size={48} color={dynamicTheme.subText} />
+                        <Text style={{ color: dynamicTheme.subText, marginTop: 10 }}>
                             {selectedDateStr === TODAY ? '今天' : selectedDateStr} 没有安排
                         </Text>
                     </View>
@@ -330,20 +342,25 @@ export default function RemindPage() {
                     const isLast = index === displayItems.length - 1;
                     const isFirst = index === 0;
                     const isCourse = item.type === 'course';
-                    
+
                     const itemColor = item.color || theme.primary;
+
+                    // 事项卡片背景色逻辑
+                    const cardBaseColor = shouldForceWhite ? '#000000' : theme.card;
+                    const cardOpacity = customSettings.remindItemOpacity ?? 0.85;
+                    const finalCardBg = setAlpha(cardBaseColor, cardOpacity);
 
                     return (
                         <View style={styles.itemRow}>
                             <View style={styles.timeColumn}>
-                                <Text style={[styles.timeText, { color: theme.text }]}>{item.time}</Text>
+                                <Text style={[styles.timeText, { color: dynamicTheme.text }]}>{item.time}</Text>
                             </View>
 
                             <View style={styles.timelineColumn}>
                                 <View style={[
-                                    styles.lineBase, 
+                                    styles.lineBase,
                                     {
-                                        backgroundColor: theme.border,
+                                        backgroundColor: shouldForceWhite ? 'rgba(255,255,255,0.3)' : theme.border,
                                         marginTop: isFirst ? 20 : 0,
                                         height: isLast ? 20 : '100%',
                                         flex: isLast ? undefined : 1
@@ -354,8 +371,9 @@ export default function RemindPage() {
                                     styles.dot,
                                     {
                                         borderRadius: isCourse ? 4 : 7,
-                                        backgroundColor: item.completed ? theme.subText : (isCourse ? itemColor : theme.background),
-                                        borderColor: item.completed ? theme.subText : itemColor,
+                                        backgroundColor: item.completed ? dynamicTheme.subText : (isCourse ? itemColor : (shouldForceWhite ? 'transparent' : theme.background)),
+                                        borderColor: item.completed ? dynamicTheme.subText : itemColor,
+                                        borderWidth: 2
                                     }
                                 ]}>
                                     {!item.completed && !isCourse && <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: itemColor }} />}
@@ -370,7 +388,7 @@ export default function RemindPage() {
                                     <Surface style={[
                                         styles.card,
                                         {
-                                            backgroundColor: theme.card,
+                                            backgroundColor: finalCardBg,
                                             opacity: item.completed ? 0.6 : 1,
                                             borderLeftWidth: 4,
                                             borderLeftColor: itemColor
@@ -378,29 +396,29 @@ export default function RemindPage() {
                                     ]} elevation={1}>
                                         <View style={styles.cardHeader}>
                                             <View style={{ flex: 1 }}>
-                                                <View style={{flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginBottom: 2}}>
+                                                <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginBottom: 2 }}>
                                                     <Text style={[
                                                         styles.cardTitle,
                                                         {
-                                                            color: theme.text,
+                                                            color: shouldForceWhite ? '#FFFFFF' : theme.text,
                                                             textDecorationLine: item.completed ? 'line-through' : 'none',
                                                             marginRight: 6
                                                         }
                                                     ]}>
                                                         {item.title}
                                                     </Text>
-                                                    
+
                                                     {item.tag && item.tag !== '默认' && (
                                                         <View style={{
-                                                            backgroundColor: itemColor + '20', 
-                                                            paddingHorizontal: 6, 
-                                                            paddingVertical: 2, 
+                                                            backgroundColor: itemColor + '20',
+                                                            paddingHorizontal: 6,
+                                                            paddingVertical: 2,
                                                             borderRadius: 4,
                                                             justifyContent: 'center'
                                                         }}>
                                                             <Text style={{
-                                                                fontSize: 10, 
-                                                                color: itemColor, 
+                                                                fontSize: 10,
+                                                                color: itemColor,
                                                                 fontWeight: 'bold'
                                                             }}>
                                                                 {item.tag}
@@ -420,7 +438,7 @@ export default function RemindPage() {
                                                 <Checkbox.Android
                                                     status={item.completed ? 'checked' : 'unchecked'}
                                                     onPress={() => toggleTodoComplete(item.id)}
-                                                    color={itemColor} 
+                                                    color={itemColor}
                                                 />
                                             ) : (
                                                 <Ionicons
@@ -432,7 +450,7 @@ export default function RemindPage() {
                                         </View>
 
                                         {item.subtitle && (
-                                            <Text style={[styles.cardDesc, { color: theme.subText }]}>{item.subtitle}</Text>
+                                            <Text style={[styles.cardDesc, { color: shouldForceWhite ? 'rgba(255,255,255,0.7)' : theme.subText }]}>{item.subtitle}</Text>
                                         )}
                                     </Surface>
                                 </TouchableOpacity>
@@ -455,12 +473,12 @@ export default function RemindPage() {
         return (
             <View style={{ flex: 1 }}>
                 <View style={styles.calNav}>
-                    <IconButton icon="chevron-left" onPress={() => changeMonth(-1)} iconColor={theme.text} />
-                    <Text style={[styles.calTitle, { color: theme.text }]}>{year}年 {month + 1}月</Text>
-                    <IconButton icon="chevron-right" onPress={() => changeMonth(1)} iconColor={theme.text} />
+                    <IconButton icon="chevron-left" onPress={() => changeMonth(-1)} iconColor={dynamicTheme.text} />
+                    <Text style={[styles.calTitle, { color: dynamicTheme.text }]}>{year}年 {month + 1}月</Text>
+                    <IconButton icon="chevron-right" onPress={() => changeMonth(1)} iconColor={dynamicTheme.text} />
                 </View>
                 <View style={styles.weekHeader}>
-                    {WEEKDAYS.map(d => <Text key={d} style={[styles.weekText, { color: theme.subText }]}>{d}</Text>)}
+                    {WEEKDAYS.map(d => <Text key={d} style={[styles.weekText, { color: dynamicTheme.subText }]}>{d}</Text>)}
                 </View>
                 <View style={styles.daysGrid}>
                     {calendarGrid.map((day, index) => {
@@ -484,10 +502,29 @@ export default function RemindPage() {
                             ).length;
                         }
 
+                        // 🔥 2. 逻辑修正：
+                        // 如果开启强制白色 or 深色模式 -> 用黑色填充背景 (对比文字白)
+                        // 否则 (普通浅色模式) -> 用白色填充背景 (对比文字黑)
+                        const useDarkBacking = shouldForceWhite || theme.dark;
+                        const cellBaseColor = useDarkBacking ? '#000000' : '#FFFFFF';
+
+                        const cellOpacity = customSettings.remindCalendarCellOpacity ?? 0.1;
+                        const cellBg = setAlpha(cellBaseColor, cellOpacity);
+
                         return (
-                            <TouchableOpacity key={day} style={[styles.dayCell, { borderColor: theme.border }]} onPress={() => handleDayPress(dateStr)}>
+                            <TouchableOpacity
+                                key={day}
+                                style={[
+                                    styles.dayCell,
+                                    {
+                                        borderColor: shouldForceWhite ? 'rgba(255,255,255,0.2)' : theme.border,
+                                        backgroundColor: cellBg
+                                    }
+                                ]}
+                                onPress={() => handleDayPress(dateStr)}
+                            >
                                 <View style={[styles.dayNumContainer, isToday && { backgroundColor: theme.primary }, !isToday && isSelected && { borderWidth: 1, borderColor: theme.primary }]}>
-                                    <Text style={[styles.dayNum, { color: isToday ? '#fff' : theme.text }]}>{day}</Text>
+                                    <Text style={[styles.dayNum, { color: isToday ? '#fff' : dynamicTheme.text }]}>{day}</Text>
                                 </View>
 
                                 <View style={styles.eventList}>
@@ -500,7 +537,7 @@ export default function RemindPage() {
                                     )}
 
                                     {dayTodos.slice(0, courseCount > 0 ? 2 : 3).map((todo, i) => (
-                                        <View key={i} style={[styles.eventDot, { backgroundColor: todo.completed ? theme.subText : (todo.color || '#FF6B6B') }]}>
+                                        <View key={i} style={[styles.eventDot, { backgroundColor: todo.completed ? dynamicTheme.subText : (todo.color || '#FF6B6B') }]}>
                                             <Text numberOfLines={1} style={{ fontSize: 8, color: '#fff', paddingHorizontal: 2 }}>{todo.title}</Text>
                                         </View>
                                     ))}
@@ -514,26 +551,19 @@ export default function RemindPage() {
     };
 
     return (
-        <View style={[styles.container, { backgroundColor: theme.background }]}>
-            {isFocused && (
-                <StatusBar 
-                    barStyle={theme.dark ? 'light-content' : 'dark-content'} 
-                    backgroundColor={theme.background} 
-                    translucent={false}
-                />
-            )}
-
-            <View style={styles.header}>
+        <RootContainer>
+            {/* 内容区的导航栏背景色设为透明，让背景图透出来 */}
+            <View style={[styles.header, { backgroundColor: 'transparent' }]}>
                 <View style={styles.headerLeftContainer}>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                         <Ionicons
                             name={viewMode === 'list' ? "list-outline" : "calendar-outline"}
                             size={24}
-                            color={theme.text}
+                            color={dynamicTheme.text}
                             style={{ marginRight: 8 }}
                         />
 
-                        <Text style={[styles.headerTitle, { color: theme.text }]}>
+                        <Text style={[styles.headerTitle, { color: dynamicTheme.text }]}>
                             {viewMode === 'list' ? '日程安排' : '日历概览'}
                         </Text>
                     </View>
@@ -541,7 +571,7 @@ export default function RemindPage() {
                     {viewMode === 'list' ? (
                         <View style={styles.dateNavRow}>
                             <View style={styles.navArrowContainer}>
-                                <IconButton icon="chevron-left" size={24} iconColor={theme.text} onPress={() => changeDay(-1)} style={{ margin: 0 }} />
+                                <IconButton icon="chevron-left" size={24} iconColor={dynamicTheme.text} onPress={() => changeDay(-1)} style={{ margin: 0 }} />
                             </View>
                             <View style={styles.navTextContainer}>
                                 <Text style={{ color: theme.primary, fontSize: 15, fontWeight: 'bold', textAlign: 'center' }}>
@@ -549,12 +579,12 @@ export default function RemindPage() {
                                 </Text>
                             </View>
                             <View style={styles.navArrowContainer}>
-                                <IconButton icon="chevron-right" size={24} iconColor={theme.text} onPress={() => changeDay(1)} style={{ margin: 0 }} />
+                                <IconButton icon="chevron-right" size={24} iconColor={dynamicTheme.text} onPress={() => changeDay(1)} style={{ margin: 0 }} />
                             </View>
                         </View>
                     ) : (
                         <View style={[styles.dateNavRow, { justifyContent: 'flex-start', paddingLeft: 5 }]}>
-                            <Text style={{ color: theme.subText, fontSize: 12 }}>待办与课程整合</Text>
+                            <Text style={{ color: dynamicTheme.subText, fontSize: 12 }}>待办与课程整合</Text>
                         </View>
                     )}
                 </View>
@@ -571,7 +601,7 @@ export default function RemindPage() {
                     theme={{
                         colors: {
                             secondaryContainer: theme.primary + '30', onSecondaryContainer: theme.primary,
-                            onSurface: theme.text, outline: theme.border
+                            onSurface: dynamicTheme.text, outline: shouldForceWhite ? 'rgba(255,255,255,0.3)' : theme.border
                         }
                     }}
                 />
@@ -581,9 +611,8 @@ export default function RemindPage() {
                 {viewMode === 'list' ? renderTimeline() : renderCalendar()}
             </View>
 
-            {/* 🔥🔥 新增：删除 FAB (红色 X) */}
             <TouchableOpacity
-                style={[styles.fab, { backgroundColor: '#FF5252', bottom: 100 }]} // 位置在添加按钮上方
+                style={[styles.fab, { backgroundColor: '#FF5252', bottom: 100 }]}
                 onPress={() => setDeleteMenuVisible(true)}
             >
                 <Ionicons name="close" size={30} color="#fff" />
@@ -596,12 +625,11 @@ export default function RemindPage() {
                 <Ionicons name="add" size={30} color="#fff" />
             </TouchableOpacity>
 
-            {/* 🔥🔥 删除菜单 Modal */}
             <Portal>
                 <Modal visible={deleteMenuVisible} onDismiss={() => setDeleteMenuVisible(false)} contentContainerStyle={{ padding: 20, alignItems: 'center', justifyContent: 'center' }}>
                     <Surface style={{ padding: 20, borderRadius: 12, backgroundColor: theme.card, width: '80%', maxWidth: 300 }}>
                         <Text style={{ fontSize: 18, fontWeight: 'bold', color: theme.text, marginBottom: 20, textAlign: 'center' }}>批量删除</Text>
-                        
+
                         <Button mode="outlined" textColor="#FF5252" style={{ borderColor: '#FF5252', marginBottom: 15 }} onPress={handleDeleteTodayTodos}>
                             删除当天待办 ({selectedDateStr})
                         </Button>
@@ -616,13 +644,23 @@ export default function RemindPage() {
                     </Surface>
                 </Modal>
             </Portal>
-        </View>
+        </RootContainer>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1 },
-    header: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    customHeader: {
+        width: '100%',
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 10,
+        paddingBottom: 5,
+    },
+    customHeaderTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+    },
+    header: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     headerLeftContainer: { flex: 1, height: 60, justifyContent: 'center' },
     headerTitle: { fontSize: 24, fontWeight: 'bold', marginBottom: 2 },
     dateNavRow: { flexDirection: 'row', alignItems: 'center', height: 30, marginLeft: -12 },
@@ -640,7 +678,7 @@ const styles = StyleSheet.create({
     contentColumn: { flex: 1, paddingBottom: 20, paddingLeft: 10 },
     card: { borderRadius: 12, padding: 15, justifyContent: 'center' },
     cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    cardTitle: { fontSize: 16, fontWeight: 'bold' }, 
+    cardTitle: { fontSize: 16, fontWeight: 'bold' },
     cardDesc: { fontSize: 13, marginTop: 5, lineHeight: 18 },
 
     calNav: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginBottom: 5 },

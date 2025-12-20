@@ -26,7 +26,7 @@ const REPEAT_OPTIONS = [
 
 const COLOR_OPTIONS = ['#2196F3', '#F44336', '#E91E63', '#FF9800', '#4CAF50', '#9C27B0', '#607D8B'];
 
-// 1. 更新选项和上限
+// 更新选项和上限
 const REMINDER_UNITS = [
     { label: '分钟', value: 'minute' },
     { label: '小时', value: 'hour' },
@@ -77,7 +77,6 @@ const calculateNextOccurrence = (todo: any, currentDateStr: string): string => {
     return `${y}-${m}-${d}`;
 };
 
-// 辅助：计算提前的毫秒数
 const getReminderMilliseconds = (val: number, unit: string) => {
     const minute = 60 * 1000;
     const hour = 60 * minute;
@@ -115,12 +114,10 @@ export default function TodoEditPage({ route, navigation }: any) {
         todo?.repeatType || (todo?.isYearly ? 'yearly' : 'none')
     );
 
-    // 主页面显示的提醒状态 (从 props 初始化)
     const [reminderValue, setReminderValue] = useState<string>(todo?.reminder ? String(todo.reminder.value) : '15');
     const [reminderUnit, setReminderUnit] = useState<string>(todo?.reminder ? todo.reminder.unit : 'minute');
     const [hasReminder, setHasReminder] = useState<boolean>(!!todo?.reminder);
 
-    // 🔥🔥 中间变量：仅在弹窗内部使用，点击确定才同步到上面
     const [tempReminderValue, setTempReminderValue] = useState(reminderValue);
     const [tempReminderUnit, setTempReminderUnit] = useState(reminderUnit);
     const [tempHasReminder, setTempHasReminder] = useState(hasReminder);
@@ -143,7 +140,6 @@ export default function TodoEditPage({ route, navigation }: any) {
         });
     }, [navigation, theme, isEdit]);
 
-    // 🔥 打开弹窗时，用主状态初始化中间变量
     const openReminderModal = () => {
         setTempReminderValue(reminderValue);
         setTempReminderUnit(reminderUnit);
@@ -151,24 +147,6 @@ export default function TodoEditPage({ route, navigation }: any) {
         setReminderModalVisible(true);
     };
 
-    // 🔥 弹窗内处理数值变化 (只改 temp)
-    const handleTempReminderValueChange = (text: string) => {
-        const cleanText = text.replace(/[^0-9]/g, '');
-        const num = parseInt(cleanText, 10);
-        const limit = REMINDER_LIMITS[tempReminderUnit];
-
-        if (cleanText === '') {
-            setTempReminderValue('');
-            return;
-        }
-        if (num > limit) {
-            setTempReminderValue(String(limit));
-        } else {
-            setTempReminderValue(cleanText);
-        }
-    };
-
-    // 🔥 弹窗内处理单位变化 (只改 temp)
     const handleTempReminderUnitChange = (unit: string) => {
         setTempReminderUnit(unit);
         const currentVal = parseInt(tempReminderValue, 10);
@@ -176,11 +154,12 @@ export default function TodoEditPage({ route, navigation }: any) {
         if (!isNaN(currentVal) && currentVal > limit) {
             setTempReminderValue(String(limit));
         }
+        if (isNaN(currentVal) || currentVal <= 0) {
+            setTempReminderValue('1');
+        }
     };
 
-    // 🔥🔥 核心：弹窗确定按钮逻辑 (包含时间校验)
     const handleConfirmReminder = () => {
-        // 如果开启提醒 且 不是一直重复的(repeatType === 'none')
         if (tempHasReminder && repeatType === 'none' && tempReminderValue) {
             const start = parseTime(startTime);
             const todoDate = new Date(dateStr);
@@ -197,11 +176,10 @@ export default function TodoEditPage({ route, navigation }: any) {
                     '您设置的提醒时间早于当前时间，请检查日期、时间或提前量。',
                     [{ text: '知道了', style: 'cancel' }]
                 );
-                return; // ⛔ 校验失败，不关闭弹窗，不同步状态
+                return;
             }
         }
 
-        // ✅ 校验通过，同步到主状态
         setReminderValue(tempReminderValue);
         setReminderUnit(tempReminderUnit);
         setHasReminder(tempHasReminder);
@@ -278,7 +256,6 @@ export default function TodoEditPage({ route, navigation }: any) {
         const end = parseTime(endTime);
         if (end < start) { Alert.alert('提示', '结束时间不能早于开始时间'); return; }
 
-        // 🔥🔥 核心：保存时的二次时间校验 (防止用户等待导致过期)
         if (hasReminder && repeatType === 'none' && reminderValue) {
             const todoDate = new Date(dateStr);
             todoDate.setHours(start.getHours());
@@ -286,7 +263,7 @@ export default function TodoEditPage({ route, navigation }: any) {
 
             const offsetMs = getReminderMilliseconds(parseInt(reminderValue, 10), reminderUnit);
             const triggerTime = new Date(todoDate.getTime() - offsetMs);
-            const now = new Date(); // 获取点击保存瞬间的时间
+            const now = new Date();
 
             if (triggerTime < now) {
                 Alert.alert(
@@ -294,7 +271,7 @@ export default function TodoEditPage({ route, navigation }: any) {
                     '您设置的提醒时间早于当前时间，可能是因为您停留了太久。请重新调整。',
                     [{ text: '去调整', onPress: openReminderModal }, { text: '取消保存', style: 'cancel' }]
                 );
-                return; // ⛔ 阻止保存
+                return;
             }
         }
 
@@ -373,7 +350,6 @@ export default function TodoEditPage({ route, navigation }: any) {
     return (
         <ScrollView
             style={[styles.container, { backgroundColor: theme.background }]}
-            // 🔥🔥 核心修复：增加底部 padding，防止按钮贴底
             contentContainerStyle={{ paddingBottom: 80 }}
         >
             <StatusBar barStyle={theme.dark ? 'light-content' : 'dark-content'} backgroundColor={theme.background} translucent={false} />
@@ -438,7 +414,7 @@ export default function TodoEditPage({ route, navigation }: any) {
                     </TouchableOpacity>
                 </View>
 
-                {/* 提醒时间设置行 - 使用 openReminderModal */}
+                {/* 提醒时间设置行 */}
                 <View style={{ height: 1, backgroundColor: theme.border, marginVertical: 15 }} />
                 <TouchableOpacity onPress={openReminderModal} style={styles.rowItem}>
                     <View>
@@ -498,66 +474,88 @@ export default function TodoEditPage({ route, navigation }: any) {
                 </Modal>
             </Portal>
 
-            {/* 提醒设置弹窗 */}
+            {/* 🔥 提醒设置弹窗：修复了布局塌陷和按钮跑偏的问题 */}
             <Portal>
                 <Modal visible={reminderModalVisible} onDismiss={() => setReminderModalVisible(false)} contentContainerStyle={{ padding: 20, alignItems: 'center', justifyContent: 'center' }}>
-                    <Surface style={{ padding: 20, borderRadius: 16, backgroundColor: theme.card, width: '85%', maxWidth: 320 }}>
-                        <Text style={{ fontSize: 18, fontWeight: 'bold', color: theme.text, marginBottom: 15, textAlign: 'center' }}>设置提醒</Text>
+                    <Surface style={{ borderRadius: 16, backgroundColor: theme.card, width: '85%', maxWidth: 350, overflow: 'hidden' }}>
+                        <View style={{ padding: 20 }}>
+                            <Text style={{ fontSize: 18, fontWeight: 'bold', color: theme.text, marginBottom: 15, textAlign: 'center' }}>设置提醒</Text>
 
-                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-                            <Text style={{ color: theme.text }}>开启提醒</Text>
-                            <Button mode={tempHasReminder ? 'contained' : 'outlined'} onPress={() => setTempHasReminder(!tempHasReminder)} buttonColor={tempHasReminder ? theme.primary : undefined} compact>{tempHasReminder ? '已开启' : '已关闭'}</Button>
-                        </View>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+                                <Text style={{ color: theme.text }}>开启提醒</Text>
+                                <Button mode={tempHasReminder ? 'contained' : 'outlined'} onPress={() => setTempHasReminder(!tempHasReminder)} buttonColor={tempHasReminder ? theme.primary : undefined} compact>{tempHasReminder ? '已开启' : '已关闭'}</Button>
+                            </View>
 
-                        {tempHasReminder && (
-                            <>
-                                <Text style={{ color: theme.subText, fontSize: 12, marginBottom: 5 }}>提前时间数值 (最大{REMINDER_LIMITS[tempReminderUnit]})</Text>
-                                <TextInput
-                                    value={tempReminderValue}
-                                    onChangeText={handleTempReminderValueChange}
-                                    mode="outlined" keyboardType="numeric" style={{ marginBottom: 15, backgroundColor: theme.background }} textColor={theme.text}
-                                    right={<TextInput.Affix text={REMINDER_UNITS.find(u => u.value === tempReminderUnit)?.label} />}
-                                />
-
-                                <Text style={{ color: theme.subText, fontSize: 12, marginBottom: 5 }}>单位</Text>
-                                <View style={{ gap: 10 }}>
-                                    {/* 🔥 第一行：分钟、小时、天 */}
-                                    <View style={{ flexDirection: 'row', gap: 8 }}>
-                                        {REMINDER_UNITS.slice(0, 3).map(unit => (
-                                            <Chip
-                                                key={unit.value}
-                                                selected={tempReminderUnit === unit.value}
-                                                onPress={() => handleTempReminderUnitChange(unit.value)}
-                                                style={{ backgroundColor: tempReminderUnit === unit.value ? theme.primary + '20' : theme.background, flex: 1 }}
-                                                textStyle={{ color: tempReminderUnit === unit.value ? theme.primary : theme.text, textAlign: 'center' }}
-                                                showSelectedOverlay={true}
-                                            >
-                                                {unit.label}
-                                            </Chip>
-                                        ))}
+                            {tempHasReminder && (
+                                <View style={{ width: '100%' }}>
+                                    {/* 1. 先选单位 */}
+                                    <Text style={{ color: theme.subText, fontSize: 12, marginBottom: 8 }}>选择单位</Text>
+                                    <View style={{ gap: 10, marginBottom: 20 }}>
+                                        <View style={{ flexDirection: 'row', gap: 8 }}>
+                                            {REMINDER_UNITS.slice(0, 3).map(unit => (
+                                                <Chip
+                                                    key={unit.value}
+                                                    selected={tempReminderUnit === unit.value}
+                                                    onPress={() => handleTempReminderUnitChange(unit.value)}
+                                                    style={{ backgroundColor: tempReminderUnit === unit.value ? theme.primary + '20' : theme.background, flex: 1 }}
+                                                    textStyle={{ color: tempReminderUnit === unit.value ? theme.primary : theme.text, textAlign: 'center' }}
+                                                    showSelectedOverlay={true}
+                                                >
+                                                    {unit.label}
+                                                </Chip>
+                                            ))}
+                                        </View>
+                                        <View style={{ flexDirection: 'row', gap: 8 }}>
+                                            {REMINDER_UNITS.slice(3).map(unit => (
+                                                <Chip
+                                                    key={unit.value}
+                                                    selected={tempReminderUnit === unit.value}
+                                                    onPress={() => handleTempReminderUnitChange(unit.value)}
+                                                    style={{ backgroundColor: tempReminderUnit === unit.value ? theme.primary + '20' : theme.background, flex: 1 }}
+                                                    textStyle={{ color: tempReminderUnit === unit.value ? theme.primary : theme.text, textAlign: 'center' }}
+                                                    showSelectedOverlay={true}
+                                                >
+                                                    {unit.label}
+                                                </Chip>
+                                            ))}
+                                            {REMINDER_UNITS.slice(3).length < 3 && <View style={{ flex: 1 }} />}
+                                        </View>
                                     </View>
-                                    {/* 🔥 第二行：周、月、年 */}
-                                    <View style={{ flexDirection: 'row', gap: 8 }}>
-                                        {REMINDER_UNITS.slice(3).map(unit => (
-                                            <Chip
-                                                key={unit.value}
-                                                selected={tempReminderUnit === unit.value}
-                                                onPress={() => handleTempReminderUnitChange(unit.value)}
-                                                style={{ backgroundColor: tempReminderUnit === unit.value ? theme.primary + '20' : theme.background, flex: 1 }}
-                                                textStyle={{ color: tempReminderUnit === unit.value ? theme.primary : theme.text, textAlign: 'center' }}
-                                                showSelectedOverlay={true}
-                                            >
-                                                {unit.label}
-                                            </Chip>
-                                        ))}
-                                        {/* 占位符，保持对齐 */}
-                                        {REMINDER_UNITS.slice(3).length < 3 && <View style={{ flex: 1 }} />}
-                                    </View>
+
+                                    {/* 2. 再选数值 (网格) */}
+                                    <Text style={{ color: theme.subText, fontSize: 12, marginBottom: 10 }}>
+                                        选择提前量 (最大{REMINDER_LIMITS[tempReminderUnit]})
+                                    </Text>
+
+                                    {/* 🔥 修复：增加 minHeight 和 padding 防止塌陷；内容少时也能撑开 */}
+                                    <ScrollView style={{ maxHeight: 200, flexGrow: 0 }} contentContainerStyle={{ paddingBottom: 5 }}>
+                                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-start' }}>
+                                            {Array.from({ length: REMINDER_LIMITS[tempReminderUnit] }, (_, i) => i + 1).map((num) => {
+                                                const isSelected = parseInt(tempReminderValue) === num;
+                                                return (
+                                                    <TouchableOpacity
+                                                        key={num}
+                                                        onPress={() => setTempReminderValue(String(num))}
+                                                        style={{
+                                                            width: 45, height: 45, borderRadius: 8,
+                                                            // 🔥 修复：未选中时使用 theme.background，确保可视
+                                                            backgroundColor: isSelected ? theme.primary : theme.background,
+                                                            borderWidth: 1,
+                                                            borderColor: isSelected ? theme.primary : theme.border,
+                                                            justifyContent: 'center', alignItems: 'center'
+                                                        }}
+                                                    >
+                                                        <Text style={{ color: isSelected ? '#fff' : theme.text, fontWeight: 'bold' }}>{num}</Text>
+                                                    </TouchableOpacity>
+                                                );
+                                            })}
+                                        </View>
+                                    </ScrollView>
                                 </View>
-                            </>
-                        )}
+                            )}
 
-                        <Button mode="contained" onPress={handleConfirmReminder} style={{ marginTop: 20 }} buttonColor={theme.primary}>确定</Button>
+                            <Button mode="contained" onPress={handleConfirmReminder} style={{ marginTop: 20 }} buttonColor={theme.primary}>确定</Button>
+                        </View>
                     </Surface>
                 </Modal>
             </Portal>

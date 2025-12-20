@@ -19,38 +19,39 @@ interface WidgetProps {
         background: string; text: string; card: string; subText: string; border: string; primary: string;
     };
     widgetHeight?: number;
-    termStartDate?: string; 
+    termStartDate?: string;
     totalWeeks?: number;
+    // 🔥 新增：是否为安全模式 (四周留白)
+    isSafeMode?: boolean;
 }
 
-export function TodoWidget({ items, totalCount, theme, widgetHeight, termStartDate, totalWeeks }: WidgetProps) {
+export function TodoWidget({ items, totalCount, theme, widgetHeight, termStartDate, totalWeeks, isSafeMode = false }: WidgetProps) {
     const now = new Date();
     const dateStr = `${now.getMonth() + 1}月${now.getDate()}日`;
     const weekDayStr = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][now.getDay()];
 
     // 布局参数
-    const ROOT_MARGIN = 0;       
-    const PADDING_VERTICAL = 10; 
+    // 🔥 核心修改：如果是安全模式，四周强制留出 14dp 的空白，防止被某些主题裁切
+    const ROOT_MARGIN = isSafeMode ? 14 : 0;
+    const PADDING_VERTICAL = 10;
     const HEADER_HEIGHT = 22;
     const HEADER_MARGIN = 6;
-    const ITEM_HEIGHT = 48;      
-    const ITEM_MARGIN = 4;       
+    const ITEM_HEIGHT = 48;
+    const ITEM_MARGIN = 4;
     const SYSTEM_PADDING_BUFFER = 0;
 
     // 动态计算逻辑
     const safeHeight = widgetHeight || 200;
+    // ROOT_MARGIN 变大后，内容区域会自动变小，计算出的 maxVisibleItems 也会相应减少
     const availableContentHeight = safeHeight - (ROOT_MARGIN * 2) - PADDING_VERTICAL - HEADER_HEIGHT - HEADER_MARGIN - SYSTEM_PADDING_BUFFER;
-    
-    // 🔥🔥 核心修复：改回 Math.floor 🔥🔥
-    // Math.ceil 会导致最后一行虽然被计算在内，但实际渲染时被截断在组件边缘外。
-    // 使用 floor 确保作为“最后一行”展示的项目是【完全可见】的，这样用户才能看到后面的 +n。
+
     let maxVisibleItems = Math.floor(availableContentHeight / (ITEM_HEIGHT + ITEM_MARGIN));
     if (maxVisibleItems < 1) maxVisibleItems = 1;
 
     const displayList = items.slice(0, maxVisibleItems);
     const overflowCount = totalCount - displayList.length;
 
-    const bgColor = theme?.background || '#ffffff'; 
+    const bgColor = theme?.background || '#ffffff';
     const textColor = theme?.text || '#000000';
     const subTextColor = theme?.subText || '#666666';
     const cardColor = theme?.card || '#f5f5f5';
@@ -62,10 +63,10 @@ export function TodoWidget({ items, totalCount, theme, widgetHeight, termStartDa
             const [y, m, d] = termStartDate.split('-').map(Number);
             const start = new Date(y, m - 1, d);
             const current = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-            
+
             const diffTime = current.getTime() - start.getTime();
             const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-            
+
             const currentWeek = Math.floor(diffDays / 7) + 1;
 
             if (diffDays < 0) {
@@ -75,7 +76,7 @@ export function TodoWidget({ items, totalCount, theme, widgetHeight, termStartDa
             } else {
                 weekDisplayText = `第${currentWeek}周`;
             }
-        } catch (e) {}
+        } catch (e) { }
     }
 
     return (
@@ -95,6 +96,7 @@ export function TodoWidget({ items, totalCount, theme, widgetHeight, termStartDa
                     width: 'match_parent',
                     backgroundColor: bgColor as any,
                     borderRadius: 16,
+                    // 🔥 这里应用了边距，普通版为0，异常使用版为14
                     margin: ROOT_MARGIN,
                     paddingVertical: PADDING_VERTICAL / 2,
                     paddingHorizontal: 12,
@@ -102,14 +104,14 @@ export function TodoWidget({ items, totalCount, theme, widgetHeight, termStartDa
                 }}
             >
                 {/* Header */}
-                <FlexWidget style={{ 
-                    width: 'match_parent', 
-                    flexDirection: 'row', 
-                    alignItems: 'center', 
-                    marginBottom: HEADER_MARGIN, 
-                    height: HEADER_HEIGHT 
+                <FlexWidget style={{
+                    width: 'match_parent',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    marginBottom: HEADER_MARGIN,
+                    height: HEADER_HEIGHT
                 }}>
-                    
+
                     {/* 左侧标题 */}
                     <FlexWidget style={{ flexDirection: 'row', alignItems: 'center' }}>
                         <FlexWidget style={{ width: 4, height: 14, backgroundColor: primaryColor as any, borderRadius: 2, marginRight: 8 }} />
@@ -125,9 +127,9 @@ export function TodoWidget({ items, totalCount, theme, widgetHeight, termStartDa
                     {/* 右侧：周数 + 日期 */}
                     <FlexWidget style={{ flexDirection: 'row', alignItems: 'center' }}>
                         {weekDisplayText ? (
-                            <TextWidget 
-                                text={weekDisplayText} 
-                                style={{ fontSize: 12, color: primaryColor as any, fontWeight: 'bold', marginRight: 8 }} 
+                            <TextWidget
+                                text={weekDisplayText}
+                                style={{ fontSize: 12, color: primaryColor as any, fontWeight: 'bold', marginRight: 8 }}
                             />
                         ) : null}
                         <TextWidget text={dateStr} style={{ fontSize: 11, color: subTextColor as any }} />
@@ -193,7 +195,7 @@ export function TodoWidget({ items, totalCount, theme, widgetHeight, termStartDa
                                                     maxLines={1}
                                                 />
                                             </FlexWidget>
-                                            
+
                                             <TextWidget text={item.subtitle} style={{ fontSize: 11, color: subTextColor as any }} maxLines={1} />
                                         </FlexWidget>
 

@@ -7,7 +7,7 @@ import { TodoWidget } from '../widget/TodoWidget';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
-// --- 通知行为配置 ---
+// --- 1. 基础配置 ---
 Notifications.setNotificationHandler({
     handleNotification: async () => ({
         shouldShowAlert: true,
@@ -18,7 +18,10 @@ Notifications.setNotificationHandler({
     }),
 });
 
-// --- 类型定义 ---
+// 使用最终稳定版 ID
+const ANDROID_CHANNEL_ID = 'schedule-reminder-final';
+
+// --- 2. 类型定义 ---
 export type TimeSlot = { id: number; startTime: string; endTime: string; };
 
 export interface Course {
@@ -41,7 +44,7 @@ export interface Todo {
         value: number;
         unit: 'minute' | 'hour' | 'day' | 'week' | 'month' | 'year';
     } | null;
-    notificationId?: string; // 存储通知ID
+    notificationId?: string;
 }
 
 export interface NotificationConfig {
@@ -51,8 +54,9 @@ export interface NotificationConfig {
     advanceTime: number;
 }
 
+// 🔥 1. 默认改为关闭
 const DEFAULT_NOTIFICATION_CONFIG: NotificationConfig = {
-    enabled: true,
+    enabled: false,
     courseRemind: true,
     todoRemind: true,
     advanceTime: 10,
@@ -156,6 +160,7 @@ interface ScheduleContextType {
 
     notificationConfig: NotificationConfig;
     updateNotificationConfig: (config: Partial<NotificationConfig>) => void;
+    sendTestNotification: () => Promise<void>;
 }
 
 const ScheduleContext = createContext<ScheduleContextType>({} as ScheduleContextType);
@@ -184,28 +189,16 @@ const generateTimeLayout = (config: PeriodConfig) => {
     return newLayout;
 };
 
-// 初始化通知渠道
+// 仅请求权限，不再创建 Channel，让系统自动生成 Miscellaneous
 async function registerForPushNotificationsAsync() {
-    if (Platform.OS === 'android') {
-        await Notifications.setNotificationChannelAsync('default', {
-            name: '默认通知',
-            importance: Notifications.AndroidImportance.MAX,
-            vibrationPattern: [0, 250, 250, 250],
-            lightColor: '#FF231F7C',
-        });
-    }
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
     if (existingStatus !== 'granted') {
         const { status } = await Notifications.requestPermissionsAsync();
         finalStatus = status;
     }
-    if (finalStatus !== 'granted') {
-        console.log('用户拒绝了通知权限');
-    }
 }
 
-// 辅助函数：计算提醒的毫秒数
 const getReminderOffsetMs = (val: number, unit: string) => {
     const minute = 60 * 1000;
     const hour = 60 * minute;
@@ -244,30 +237,13 @@ export const ScheduleProvider = ({ children }: any) => {
                 if (jsonValue != null) {
                     const data = JSON.parse(jsonValue);
                     if (data.weekendConfig) setWeekendConfig(data.weekendConfig);
-                    else if (data.showWeekend !== undefined) setWeekendConfig({ saturday: data.showWeekend, sunday: data.showWeekend });
                     if (data.periodConfig) setPeriodConfig(data.periodConfig);
-                    if (data.timeLayout && data.timeLayout.length > 0) setTimeLayout(data.timeLayout);
+                    if (data.timeLayout) setTimeLayout(data.timeLayout);
                     else setTimeLayout(generateTimeLayout(data.periodConfig || { morning: 4, afternoon: 4, evening: 4 }));
                     if (data.courseList) setCourseList(data.courseList);
-                    const loadedSchedules = (data.scheduleList || []).map((s: any) => ({
-                        ...s,
-                        totalWeeks: s.totalWeeks || 25
-                    }));
-                    setScheduleList(loadedSchedules);
-                    if (data.currentSchedule) {
-                        setCurrentSchedule({
-                            ...data.currentSchedule,
-                            totalWeeks: data.currentSchedule.totalWeeks || 25
-                        });
-                        const now = new Date();
-                        const start = new Date(data.currentSchedule.termStartDate);
-                        const diffTime = now.getTime() - start.getTime();
-                        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-                        let autoWeek = Math.floor(diffDays / 7) + 1;
-                        setCurrentWeek(autoWeek > 0 ? autoWeek : 1);
-                    } else {
-                        if (data.currentWeek) setCurrentWeek(data.currentWeek);
-                    }
+                    setScheduleList(data.scheduleList || []);
+                    setCurrentSchedule(data.currentSchedule);
+                    if (data.currentWeek) setCurrentWeek(data.currentWeek);
                     if (data.todoList) setTodoList(data.todoList);
                     if (data.displayConfig) setDisplayConfig(data.displayConfig);
                     if (data.notificationConfig) setNotificationConfig(data.notificationConfig);
@@ -283,21 +259,50 @@ export const ScheduleProvider = ({ children }: any) => {
         loadData();
     }, []);
 
+    // 监听数据变化，重新调度通知
     useEffect(() => {
         if (!isLoaded) return;
-        const newTotal = periodConfig.morning + periodConfig.afternoon + periodConfig.evening;
-        setTimeLayout(prev => {
-            const currentTotal = prev.length;
-            if (currentTotal === newTotal) return prev;
-            if (newTotal < currentTotal) {
-                return prev.slice(0, newTotal);
-            } else {
-                const refLayout = generateTimeLayout(periodConfig);
-                const addedSlots = refLayout.slice(currentTotal, newTotal);
-                return [...prev, ...addedSlots];
-            }
-        });
-    }, [periodConfig, isLoaded]);
+
+        const saveData = async () => {
+            const dataToSave = {
+                weekendConfig, periodConfig, timeLayout,
+                courseList, scheduleList, currentSchedule, currentWeek, todoList,
+                displayConfig, notificationConfig
+            };
+            try {
+                await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
+                updateAndroidWidget();
+            } catch (e) { console.error(e); }
+        };
+        saveData();
+
+        if (notificationConfig.enabled) {
+            scheduleAllNotifications();
+        } else {
+            Notifications.cancelAllScheduledNotificationsAsync();
+        }
+
+    }, [
+        weekendConfig, periodConfig, timeLayout, courseList,
+        scheduleList, currentSchedule, currentWeek, todoList,
+        isLoaded, theme, displayConfig, notificationConfig
+    ]);
+
+    const updateWeekendConfig = (config: Partial<WeekendConfig>) => setWeekendConfig(prev => ({ ...prev, ...config }));
+    const createSchedule = (name: string, startDate: string, totalWeeks = 25) => {
+        const newSchedule: ScheduleInfo = { id: Date.now().toString(), name, termStartDate: startDate, totalWeeks };
+        setScheduleList(prev => [...prev, newSchedule]);
+        setCurrentSchedule(newSchedule);
+        setCurrentWeek(1);
+    };
+    const switchSchedule = (id: string) => { const target = scheduleList.find(s => s.id === id); if (target) setCurrentSchedule(target); };
+    const updateScheduleInfo = (id: string, name: string, startDate: string, totalWeeks: number) => {
+        setScheduleList(prev => prev.map(s => s.id === id ? { ...s, name, termStartDate: startDate, totalWeeks } : s));
+        if (currentSchedule?.id === id) setCurrentSchedule(prev => prev ? { ...prev, name, termStartDate: startDate, totalWeeks } : null);
+    };
+    const addCourse = (c: Course) => setCourseList(prev => [...prev, c]);
+    const updateCourse = (c: Course) => setCourseList(prev => prev.map(x => x.id === c.id ? c : x));
+    const deleteCourse = (id: string) => setCourseList(prev => prev.filter(x => x.id !== id));
 
     const updateAndroidWidget = async () => {
         try {
@@ -374,7 +379,10 @@ export const ScheduleProvider = ({ children }: any) => {
             const startDate = currentSchedule?.termStartDate;
             const weeks = currentSchedule?.totalWeeks;
 
-            ['TodoWidget', 'TodoWidget3x2', 'TodoWidgetLarge'].forEach(name => {
+            ['TodoWidget', 'TodoWidget3x2', 'TodoWidgetLarge', 'TodoWidgetSafe', 'TodoWidgetLargeSafe'].forEach(name => {
+                const isSafe = name.includes('Safe');
+                const height = name.includes('Large') ? 300 : 200;
+
                 requestWidgetUpdate({
                     widgetName: name as any,
                     renderWidget: () => (
@@ -382,9 +390,10 @@ export const ScheduleProvider = ({ children }: any) => {
                             items={displayList}
                             totalCount={totalCount}
                             theme={widgetTheme}
-                            widgetHeight={name === 'TodoWidgetLarge' ? 300 : 200}
+                            widgetHeight={height}
                             termStartDate={startDate}
                             totalWeeks={weeks}
+                            isSafeMode={isSafe}
                         />
                     ),
                     widgetNotFound: () => { }
@@ -395,114 +404,105 @@ export const ScheduleProvider = ({ children }: any) => {
         }
     };
 
-    useEffect(() => {
-        if (!isLoaded) return;
-        const saveData = async () => {
-            const dataToSave = {
-                weekendConfig, periodConfig, timeLayout,
-                courseList, scheduleList, currentSchedule, currentWeek, todoList,
-                displayConfig, notificationConfig
-            };
-            try {
-                await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
-                updateAndroidWidget();
-            } catch (e) { console.error(e); }
-        };
-        saveData();
-    }, [
-        weekendConfig, periodConfig, timeLayout, courseList,
-        scheduleList, currentSchedule, currentWeek, todoList,
-        isLoaded, theme, displayConfig, notificationConfig
-    ]);
-
-    const updateWeekendConfig = (config: Partial<WeekendConfig>) => setWeekendConfig(prev => ({ ...prev, ...config }));
-    const createSchedule = (name: string, startDate: string, totalWeeks = 25) => {
-        const newSchedule: ScheduleInfo = { id: Date.now().toString(), name, termStartDate: startDate, totalWeeks };
-        setScheduleList(prev => [...prev, newSchedule]);
-        setCurrentSchedule(newSchedule);
-        setCurrentWeek(1);
+    // 🔥 2. 新增：立即发送测试通知
+    const sendTestNotification = async () => {
+        try {
+            await Notifications.scheduleNotificationAsync({
+                content: {
+                    title: '🔔 通知功能测试',
+                    body: '请打开自启动和后台省电无限制',
+                    sound: 'default',
+                },
+                trigger: null, // 立即发送
+            });
+        } catch (e) {
+            console.log("Test notification failed", e);
+        }
     };
-    const switchSchedule = (id: string) => { const target = scheduleList.find(s => s.id === id); if (target) setCurrentSchedule(target); };
-    const updateScheduleInfo = (id: string, name: string, startDate: string, totalWeeks: number) => {
-        setScheduleList(prev => prev.map(s => s.id === id ? { ...s, name, termStartDate: startDate, totalWeeks } : s));
-        if (currentSchedule?.id === id) setCurrentSchedule(prev => prev ? { ...prev, name, termStartDate: startDate, totalWeeks } : null);
+
+    const scheduleAllNotifications = async () => {
+        await Notifications.cancelAllScheduledNotificationsAsync();
+
+        if (notificationConfig.todoRemind) {
+            for (const todo of todoList) {
+                if (todo.completed || !todo.reminder) continue;
+                await scheduleSingleNotification(
+                    `⏰ 待办：${todo.title}`,
+                    todo.description || '',
+                    todo.date,
+                    todo.startTime,
+                    todo.reminder.value,
+                    todo.reminder.unit
+                );
+            }
+        }
+
+        if (notificationConfig.courseRemind && currentSchedule) {
+            const termStart = new Date(currentSchedule.termStartDate);
+
+            const activeCourses = courseList.filter(c =>
+                c.scheduleId === currentSchedule.id && c.weeks.includes(currentWeek)
+            );
+
+            for (const course of activeCourses) {
+                const thisWeekMonday = new Date(termStart);
+                thisWeekMonday.setDate(termStart.getDate() + (currentWeek - 1) * 7);
+
+                const courseDate = new Date(thisWeekMonday);
+                courseDate.setDate(thisWeekMonday.getDate() + course.day);
+
+                const dateStr = courseDate.toISOString().split('T')[0];
+
+                const timeSlot = timeLayout.find(t => t.id === course.startPeriod);
+                if (timeSlot) {
+                    await scheduleSingleNotification(
+                        `📚 上课提醒：${course.name}`,
+                        `${course.classroom ? `@${course.classroom}` : ''} | 第${course.startPeriod}节`,
+                        dateStr,
+                        timeSlot.startTime,
+                        notificationConfig.advanceTime,
+                        'minute'
+                    );
+                }
+            }
+        }
     };
-    const addCourse = (c: Course) => setCourseList(prev => [...prev, c]);
-    const updateCourse = (c: Course) => setCourseList(prev => prev.map(x => x.id === c.id ? c : x));
-    const deleteCourse = (id: string) => setCourseList(prev => prev.filter(x => x.id !== id));
 
-    // 🔥 核心修复：添加 type: 'timeInterval' 解决报错
-    const scheduleNotificationForTodo = async (todo: Todo): Promise<string | undefined> => {
-        if (!notificationConfig.enabled || !todo.reminder) return undefined;
-
-        const [year, month, day] = todo.date.split('-').map(Number);
-        const [hour, minute] = todo.startTime.split(':').map(Number);
+    const scheduleSingleNotification = async (title: string, body: string, dateStr: string, timeStr: string, offsetVal: number, offsetUnit: string) => {
+        const [year, month, day] = dateStr.split('-').map(Number);
+        const [hour, minute] = timeStr.split(':').map(Number);
         const targetDate = new Date(year, month - 1, day, hour, minute);
 
-        const offsetMs = getReminderOffsetMs(todo.reminder.value, todo.reminder.unit);
+        const offsetMs = getReminderOffsetMs(offsetVal, offsetUnit);
         const triggerDate = new Date(targetDate.getTime() - offsetMs);
         const now = Date.now();
 
-        // 1. 如果时间已过，不预约
-        if (triggerDate.getTime() < now) return undefined;
+        if (triggerDate.getTime() < now) return;
 
-        // 2. 计算剩余秒数
         const seconds = Math.floor((triggerDate.getTime() - now) / 1000);
-        if (seconds <= 0) return undefined;
+        if (seconds <= 0) return;
 
         try {
-            const id = await Notifications.scheduleNotificationAsync({
+            await Notifications.scheduleNotificationAsync({
                 content: {
-                    title: `⏰ 待办提醒：${todo.title}`,
-                    body: `时间：${todo.startTime} ${todo.description ? `\n${todo.description}` : ''}`,
-                    sound: true,
-                    // Android 需要指定 channelId (与 init 时一致)
-                    ...(Platform.OS === 'android' ? { channelId: 'default' } : {}),
+                    title,
+                    body,
+                    sound: 'default',
                 },
-                // 🔥 修复：显式指定 type: 'timeInterval'
                 trigger: {
-                    type: 'timeInterval', // 也可以用 Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL
+                    type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
                     seconds: seconds,
                     repeats: false,
                 } as any,
             });
-            return id;
         } catch (e) {
-            console.error('Schedule failed', e);
-            return undefined;
+            console.log("Schedule error", e);
         }
     };
 
-    const addTodo = async (t: Todo) => {
-        const notifId = await scheduleNotificationForTodo(t);
-        const newTodo = { ...t, notificationId: notifId };
-        setTodoList(prev => [...prev, newTodo]);
-    };
-
-    const updateTodo = async (t: Todo) => {
-        // 先取消旧通知
-        if (t.notificationId) {
-            try {
-                await Notifications.cancelScheduledNotificationAsync(t.notificationId);
-            } catch (e) { /* ignore */ }
-        }
-
-        // 预约新通知
-        const newNotifId = await scheduleNotificationForTodo(t);
-        const updatedTodo = { ...t, notificationId: newNotifId };
-
-        setTodoList(prev => prev.map(x => x.id === t.id ? updatedTodo : x));
-    };
-
-    const deleteTodo = async (id: string) => {
-        const target = todoList.find(t => t.id === id);
-        if (target?.notificationId) {
-            try {
-                await Notifications.cancelScheduledNotificationAsync(target.notificationId);
-            } catch (e) { /* ignore */ }
-        }
-        setTodoList(prev => prev.filter(x => x.id !== id));
-    };
+    const addTodo = async (t: Todo) => { setTodoList(prev => [...prev, t]); };
+    const updateTodo = async (t: Todo) => { setTodoList(prev => prev.map(x => x.id === t.id ? t : x)); };
+    const deleteTodo = async (id: string) => { setTodoList(prev => prev.filter(x => x.id !== id)); };
 
     const clearAllSchedules = () => {
         setScheduleList([]);
@@ -557,7 +557,11 @@ export const ScheduleProvider = ({ children }: any) => {
             setTimeLayout(generateTimeLayout({ morning: 4, afternoon: 4, evening: 4 }));
             setCurrentWeek(1);
             setNotificationConfig(DEFAULT_NOTIFICATION_CONFIG);
-            if (updateCustomSettings) updateCustomSettings({ backgroundImage: null, bgImageOpacity: 1, borderOpacity: 0.1, courseOpacity: 0.85, transparentHeader: false, forceWhiteContent: false });
+            // 🔥 更新：重置时也清空日程页的个性化设置
+            if (updateCustomSettings) updateCustomSettings({
+                backgroundImage: null, bgImageOpacity: 1, borderOpacity: 0.1, courseOpacity: 0.85, transparentHeader: false, forceWhiteContent: false,
+                remindBackgroundImage: null, remindBgImageOpacity: 1, remindTransparentHeader: false, remindForceWhiteContent: false
+            });
         } catch (e) { console.error("重置失败", e); }
     };
 
@@ -574,7 +578,7 @@ export const ScheduleProvider = ({ children }: any) => {
             displayConfig, setDisplayConfig, updateDisplayConfig: setDisplayConfig,
             deleteSchedule, clearAllSchedules, exportScheduleData, importScheduleData, resetToDefault,
             exportTodoData, batchAddTodos,
-            notificationConfig, updateNotificationConfig
+            notificationConfig, updateNotificationConfig, sendTestNotification // 🔥 暴露给 UI
         }}>
             {children}
         </ScheduleContext.Provider>

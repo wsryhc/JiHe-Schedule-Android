@@ -48,13 +48,29 @@ export const AI_PROMPT_TEMPLATE = `请帮我识别这张课程表图片，提取
 
 请直接输出 JSON 字符串，不要包含 \`\`\`json 标记。可能会存在重复的课程，请全部列出。在不同周的同一时间段有不同课程的情况，也请全部列出。`;
 
+/**
+ * 获取当前日期所在周的周一
+ * 修复了周日(0)的问题，并避免修改传入的原始对象
+ */
 export const getMonday = (d: Date) => {
-    const day = d.getDay();
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-    return new Date(d.setDate(diff));
+    const date = new Date(d); // 🔥 关键修复：创建副本，不要修改原对象
+    const day = date.getDay();
+    // 逻辑：如果是周日(0)，回退6天；否则回退 day-1 天
+    const diff = date.getDate() - day + (day === 0 ? -6 : 1);
+    return new Date(date.setDate(diff));
 };
 
-export const formatDate = (date: Date) => date.toISOString().split('T')[0];
+/**
+ * 格式化日期为 YYYY-MM-DD
+ * 修复了 toISOString 导致的时区偏差问题（比如周一变成周日）
+ */
+export const formatDate = (date: Date) => {
+    const d = new Date(date);
+    const year = d.getFullYear();
+    const month = (d.getMonth() + 1).toString().padStart(2, '0');
+    const day = d.getDate().toString().padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
 
 // OCR 解析算法
 export const parseOcrResultToSchedule = (blocks: any[]) => {
@@ -70,7 +86,7 @@ export const parseOcrResultToSchedule = (blocks: any[]) => {
 
     const weekKeywords = ['一', '二', '三', '四', '五', '六', '日'];
     const headers: { day: number, cx: number, cy: number }[] = [];
-    
+
     cleanBlocks.forEach((b: any) => {
         weekKeywords.forEach((k, idx) => {
             if (b.text.includes(`星期${k}`) || b.text.includes(`周${k}`)) {
@@ -84,7 +100,7 @@ export const parseOcrResultToSchedule = (blocks: any[]) => {
 
     if (headers.length === 0) return null;
 
-    let avgWidth = 200; 
+    let avgWidth = 200;
     if (headers.length > 1) {
         avgWidth = (headers[headers.length - 1].cx - headers[0].cx) / (headers.length - 1);
     }
@@ -103,7 +119,7 @@ export const parseOcrResultToSchedule = (blocks: any[]) => {
 
     const colRanges: { day: number, minX: number, maxX: number }[] = [];
     finalHeaders.forEach((h, i) => {
-        let minX = -99999; 
+        let minX = -99999;
         let maxX = 99999;
         if (i > 0) minX = (finalHeaders[i - 1].cx + h.cx) / 2;
         if (i < finalHeaders.length - 1) maxX = (h.cx + finalHeaders[i + 1].cx) / 2;
@@ -112,7 +128,7 @@ export const parseOcrResultToSchedule = (blocks: any[]) => {
 
     const headerBottomY = Math.max(...headers.map(h => h.cy)) + 50;
     const rows: { cy: number, blocks: any[] }[] = [];
-    
+
     cleanBlocks.forEach((b: any) => {
         if (b.cy < headerBottomY) return;
         let matchedRow = rows.find(r => Math.abs(r.cy - b.cy) < 100);
@@ -184,8 +200,9 @@ export const parseOcrResultToSchedule = (blocks: any[]) => {
         });
     });
 
-    return { 
-        info: { name: 'OCR 导入', termStartDate: formatDate(new Date()) }, 
-        courses: detectedCourses 
+    return {
+        // 修正：termStartDate 也使用修复后的 getMonday 和 formatDate 逻辑
+        info: { name: 'OCR 导入', termStartDate: formatDate(getMonday(new Date())) },
+        courses: detectedCourses
     };
 };

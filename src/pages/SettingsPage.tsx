@@ -1,11 +1,12 @@
 // src/pages/SettingsPage.tsx
 import React, { useState, useLayoutEffect } from 'react';
-import { View, Text, StyleSheet, Switch, TouchableOpacity, ScrollView, Alert, Image, StatusBar } from 'react-native';
+import { View, Text, StyleSheet, Switch, TouchableOpacity, ScrollView, Alert, Image, StatusBar, Linking } from 'react-native';
 import { Modal, Portal, Button, List, Checkbox, IconButton, Surface, SegmentedButtons, Divider } from 'react-native-paper';
 import { useTheme } from '../context/ThemeContext';
 import { useSchedule } from '../context/ScheduleContext';
 import { useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function SettingsPage() {
     const {
@@ -25,7 +26,8 @@ export default function SettingsPage() {
     const [customModalVisible, setCustomModalVisible] = useState(false);
 
     const [opacityModalVisible, setOpacityModalVisible] = useState(false);
-    const [opacityTarget, setOpacityTarget] = useState<'bg' | 'border' | 'course' | null>(null);
+    // 🔥 增加 remindItem 和 remindCalendar 目标
+    const [opacityTarget, setOpacityTarget] = useState<'bg' | 'border' | 'course' | 'remindBg' | 'remindItem' | 'remindCalendar' | null>(null);
     const [tempOpacity, setTempOpacity] = useState(0);
 
     useLayoutEffect(() => {
@@ -37,7 +39,7 @@ export default function SettingsPage() {
         });
     }, [navigation, theme]);
 
-    const pickBackgroundImage = async () => {
+    const pickBackgroundImage = async (target: 'index' | 'remind') => {
         try {
             const result = await ImagePicker.launchImageLibraryAsync({
                 mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -47,19 +49,24 @@ export default function SettingsPage() {
             });
 
             if (!result.canceled && result.assets[0].uri) {
-                updateCustomSettings({ backgroundImage: result.assets[0].uri });
+                if (target === 'index') updateCustomSettings({ backgroundImage: result.assets[0].uri });
+                else updateCustomSettings({ remindBackgroundImage: result.assets[0].uri });
             }
         } catch (e) {
             Alert.alert("错误", "无法打开图库，请检查权限");
         }
     };
 
-    const openOpacityModal = (target: 'bg' | 'border' | 'course') => {
+    const openOpacityModal = (target: 'bg' | 'border' | 'course' | 'remindBg' | 'remindItem' | 'remindCalendar') => {
         setOpacityTarget(target);
         let currentVal = 0;
         if (target === 'bg') currentVal = customSettings.bgImageOpacity ?? 1;
         if (target === 'border') currentVal = customSettings.borderOpacity ?? 0.1;
         if (target === 'course') currentVal = customSettings.courseOpacity ?? 0.85;
+        if (target === 'remindBg') currentVal = customSettings.remindBgImageOpacity ?? 1;
+        // 🔥 新增
+        if (target === 'remindItem') currentVal = customSettings.remindItemOpacity ?? 0.85;
+        if (target === 'remindCalendar') currentVal = customSettings.remindCalendarCellOpacity ?? 0.1;
 
         setTempOpacity(Math.round(currentVal * 100));
         setOpacityModalVisible(true);
@@ -70,6 +77,11 @@ export default function SettingsPage() {
         if (opacityTarget === 'bg') updateCustomSettings({ bgImageOpacity: val });
         if (opacityTarget === 'border') updateCustomSettings({ borderOpacity: val });
         if (opacityTarget === 'course') updateCustomSettings({ courseOpacity: val });
+        if (opacityTarget === 'remindBg') updateCustomSettings({ remindBgImageOpacity: val });
+        // 🔥 新增保存
+        if (opacityTarget === 'remindItem') updateCustomSettings({ remindItemOpacity: val });
+        if (opacityTarget === 'remindCalendar') updateCustomSettings({ remindCalendarCellOpacity: val });
+
         setOpacityModalVisible(false);
     };
 
@@ -136,9 +148,24 @@ export default function SettingsPage() {
         ]);
     };
 
+    const openRepo = () => {
+        Linking.openURL('https://github.com/wsryhc/JiHe-Schedule');
+    };
+
+    const getOpacityTitle = () => {
+        switch (opacityTarget) {
+            case 'bg': return '调节课程表背景不透明度';
+            case 'border': return '调节边框不透明度';
+            case 'course': return '调节色块不透明度';
+            case 'remindBg': return '调节日程页背景不透明度';
+            case 'remindItem': return '调节事项区域透明度';
+            case 'remindCalendar': return '调节日历背景透明度';
+            default: return '调节透明度';
+        }
+    };
+
     return (
         <ScrollView style={[styles.container, { backgroundColor: theme.background }]} contentContainerStyle={{ paddingBottom: 50 }}>
-            {/* 状态栏适配 */}
             <StatusBar
                 key={themeMode}
                 barStyle={theme.dark ? 'light-content' : 'dark-content'}
@@ -149,7 +176,6 @@ export default function SettingsPage() {
             {/* 1. 管理 */}
             <Text style={[styles.sectionTitle, { color: theme.subText }]}>管理</Text>
             <View style={[styles.card, { backgroundColor: theme.card, marginBottom: 20 }]}>
-                {/* 🔥 修改名称 */}
                 <List.Item
                     title="课表管理"
                     description="切换学期与课表"
@@ -159,7 +185,6 @@ export default function SettingsPage() {
                     titleStyle={{ color: theme.text }} descriptionStyle={{ color: theme.subText }}
                 />
                 <Divider style={{ backgroundColor: theme.border }} />
-                {/* 🔥 新增待办管理 */}
                 <List.Item
                     title="待办管理"
                     description="导出、导入待办数据"
@@ -182,11 +207,12 @@ export default function SettingsPage() {
             {/* 2. 个性化 */}
             {currentSchedule && (
                 <>
-                    <Text style={[styles.sectionTitle, { color: theme.subText }]}>个性化</Text>
+                    {/* A. 课程表个性化 */}
+                    <Text style={[styles.sectionTitle, { color: theme.subText }]}>🎨 课程表个性化</Text>
                     <View style={[styles.card, { backgroundColor: theme.card, padding: 15, marginBottom: 20 }]}>
                         {/* 背景图 */}
                         <View style={{ marginBottom: 5 }}>
-                            <Text style={[styles.optionText, { color: theme.text, marginBottom: 10 }]}>🖼️ 主页背景</Text>
+                            <Text style={[styles.optionText, { color: theme.text, marginBottom: 10 }]}>🖼️ 课程表背景</Text>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
                                 {customSettings.backgroundImage ? (
                                     <Image source={{ uri: customSettings.backgroundImage }} style={{ width: 60, height: 60, borderRadius: 8, borderWidth: 1, borderColor: theme.border }} />
@@ -196,7 +222,7 @@ export default function SettingsPage() {
                                     </View>
                                 )}
                                 <View style={{ flex: 1, flexDirection: 'row', gap: 10 }}>
-                                    <Button mode="contained" onPress={pickBackgroundImage} buttonColor={theme.primary} compact>
+                                    <Button mode="contained" onPress={() => pickBackgroundImage('index')} buttonColor={theme.primary} compact>
                                         {customSettings.backgroundImage ? '更换图片' : '选择图片'}
                                     </Button>
                                     {customSettings.backgroundImage && (
@@ -249,11 +275,79 @@ export default function SettingsPage() {
                             </>
                         )}
                     </View>
+
+                    {/* B. 日程页个性化 (新) */}
+                    <Text style={[styles.sectionTitle, { color: theme.subText }]}>📅 日程页个性化</Text>
+                    <View style={[styles.card, { backgroundColor: theme.card, padding: 15, marginBottom: 20 }]}>
+                        {/* 背景图 */}
+                        <View style={{ marginBottom: 5 }}>
+                            <Text style={[styles.optionText, { color: theme.text, marginBottom: 10 }]}>🖼️ 日程页背景</Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                                {customSettings.remindBackgroundImage ? (
+                                    <Image source={{ uri: customSettings.remindBackgroundImage }} style={{ width: 60, height: 60, borderRadius: 8, borderWidth: 1, borderColor: theme.border }} />
+                                ) : (
+                                    <View style={{ width: 60, height: 60, borderRadius: 8, backgroundColor: theme.background, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: theme.border }}>
+                                        <Text style={{ color: theme.subText, fontSize: 10 }}>无背景</Text>
+                                    </View>
+                                )}
+                                <View style={{ flex: 1, flexDirection: 'row', gap: 10 }}>
+                                    <Button mode="contained" onPress={() => pickBackgroundImage('remind')} buttonColor={theme.primary} compact>
+                                        {customSettings.remindBackgroundImage ? '更换图片' : '选择图片'}
+                                    </Button>
+                                    {customSettings.remindBackgroundImage && (
+                                        <Button mode="outlined" onPress={() => updateCustomSettings({ remindBackgroundImage: null })} textColor={theme.text} compact>
+                                            清除
+                                        </Button>
+                                    )}
+                                </View>
+                            </View>
+                        </View>
+
+                        {customSettings.remindBackgroundImage && (
+                            <>
+                                <OpacityRow label="背景图不透明度" icon="image-outline" value={customSettings.remindBgImageOpacity ?? 1} target="remindBg" />
+                                <Divider style={{ marginVertical: 5 }} />
+
+                                {/* 🔥 新增调节选项 */}
+                                <OpacityRow label="事项区域透明度" icon="card-text-outline" value={customSettings.remindItemOpacity ?? 0.85} target="remindItem" />
+                                <Divider style={{ marginVertical: 5 }} />
+                                <OpacityRow label="日历背景透明度" icon="calendar-blank-outline" value={customSettings.remindCalendarCellOpacity ?? 0.1} target="remindCalendar" />
+
+                                <Divider style={{ marginVertical: 5 }} />
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 5 }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                        <IconButton icon="page-layout-header" size={20} iconColor={theme.subText} style={{ margin: 0, marginRight: 8 }} />
+                                        <View>
+                                            <Text style={[styles.optionText, { color: theme.text, fontSize: 16 }]}>沉浸式头部导航</Text>
+                                            <Text style={{ color: theme.subText, fontSize: 11 }}>日程页内容延伸至顶部</Text>
+                                        </View>
+                                    </View>
+                                    <Switch value={customSettings.remindTransparentHeader} onValueChange={(val) => updateCustomSettings({ remindTransparentHeader: val })} trackColor={{ false: "#ccc", true: theme.primary }} />
+                                </View>
+
+                                <Divider style={{ marginVertical: 5 }} />
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 5 }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                        <IconButton icon="format-color-text" size={20} iconColor={theme.subText} style={{ margin: 0, marginRight: 8 }} />
+                                        <View>
+                                            <Text style={[styles.optionText, { color: theme.text, fontSize: 16 }]}>深色背景适配</Text>
+                                            <Text style={{ color: theme.subText, fontSize: 11 }}>强制日程页文字和状态栏为白色</Text>
+                                        </View>
+                                    </View>
+                                    <Switch
+                                        value={customSettings.remindForceWhiteContent}
+                                        onValueChange={(val) => updateCustomSettings({ remindForceWhiteContent: val })}
+                                        trackColor={{ false: "#ccc", true: theme.primary }}
+                                    />
+                                </View>
+                            </>
+                        )}
+                    </View>
                 </>
             )}
 
             {/* 3. 显示设置 */}
-            <Text style={[styles.sectionTitle, { color: theme.subText }]}>显示内容设置</Text>
+            <Text style={[styles.sectionTitle, { color: theme.subText }]}>待办显示内容设置</Text>
             <View style={[styles.card, { backgroundColor: theme.card, marginBottom: 10, paddingVertical: 10 }]}>
                 <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
                     <Text style={{ color: theme.primary, fontWeight: 'bold' }}>📱 应用内</Text>
@@ -267,6 +361,10 @@ export default function SettingsPage() {
                     <Checkbox.Android status={displayConfig.inApp.showTodo ? 'checked' : 'unchecked'} onPress={() => toggleDisplay('inApp', 'showTodo')} color={theme.primary} />
                 </View>
             </View>
+
+            <Text style={{ color: theme.subText, fontSize: 12, marginBottom: 10, paddingHorizontal: 5, lineHeight: 18 }}>
+                桌面组件分为4x2,4x3,3x2,部分系统问题,还提供了显示异常使用的4x2和4x3样式。添加后会是透明的，为正常现象，添加或者修改待办即可刷新。
+            </Text>
 
             <View style={[styles.card, { backgroundColor: theme.card, marginBottom: 20, paddingVertical: 10 }]}>
                 <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
@@ -351,6 +449,24 @@ export default function SettingsPage() {
                 </View>
             </TouchableOpacity>
 
+            <TouchableOpacity style={[styles.card, { backgroundColor: theme.card, marginTop: 10, padding: 15 }]}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <View>
+                        <Text style={[styles.optionText, { color: theme.text }]}>未完成的项目</Text>
+                        <Text style={{ color: theme.subText, fontSize: 12 }}>查看开发计划</Text>
+                    </View>
+                    <Button mode="text" onPress={() => setCustomModalVisible(true)} textColor={theme.primary}>查看</Button>
+                </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+                onPress={openRepo}
+                style={[styles.card, { backgroundColor: theme.card, marginTop: 20, padding: 15, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}
+            >
+                <Text style={{ color: theme.text, fontSize: 16, fontWeight: 'bold' }}>本项目仓库</Text>
+                <Ionicons name="logo-github" size={24} color={theme.text} />
+            </TouchableOpacity>
+
             <View style={{ marginTop: 20, marginBottom: 50 }}>
                 <Button mode="outlined" onPress={handleReset} textColor="red" style={{ borderColor: 'red' }}>重置应用数据</Button>
             </View>
@@ -369,7 +485,7 @@ export default function SettingsPage() {
                 <Modal visible={opacityModalVisible} onDismiss={() => setOpacityModalVisible(false)} contentContainerStyle={{ padding: 20, alignItems: 'center', justifyContent: 'center' }}>
                     <Surface style={{ padding: 25, borderRadius: 16, backgroundColor: theme.card, width: '85%', maxWidth: 320, alignItems: 'center' }} elevation={4}>
                         <Text style={{ fontSize: 18, fontWeight: 'bold', color: theme.text, marginBottom: 20 }}>
-                            {opacityTarget === 'bg' ? '调节背景不透明度' : opacityTarget === 'border' ? '调节边框不透明度' : '调节色块不透明度'}
+                            {getOpacityTitle()}
                         </Text>
                         <Text style={{ fontSize: 48, fontWeight: 'bold', color: theme.primary, marginBottom: 20 }}>{tempOpacity}%</Text>
                         <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
@@ -388,9 +504,9 @@ export default function SettingsPage() {
 
             <Portal>
                 <Modal visible={customModalVisible} onDismiss={() => setCustomModalVisible(false)} contentContainerStyle={[styles.modalBox, { backgroundColor: theme.card }]}>
-                    <Text style={[styles.modalTitle, { color: theme.text }]}>未完成的项目</Text>
+                    <Text style={[styles.modalTitle, { color: theme.text }]}>项目说明</Text>
                     <ScrollView style={{ maxHeight: 300 }}>
-                        <Text style={{ color: theme.text, fontSize: 16, lineHeight: 24 }}>todo:小组件多种大小适配。</Text>
+                        <Text style={{ color: theme.text, fontSize: 16, lineHeight: 24 }}>欢迎提出意见,当前测试次数少,可能还存在很多bug。安卓端测试完成即可开发ios和Windows端软件。</Text>
                     </ScrollView>
                     <Button mode="contained" onPress={() => setCustomModalVisible(false)} buttonColor={theme.primary} style={{ marginTop: 20 }}>关闭</Button>
                 </Modal>

@@ -1,17 +1,17 @@
 // src/pages/NotificationSettingPage.tsx
 import React, { useState, useLayoutEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar, Alert } from 'react-native';
 import { List, Switch, Surface, Divider, Button, Portal, Modal, RadioButton } from 'react-native-paper';
 import { useTheme } from '../context/ThemeContext';
-import { useSchedule } from '../context/ScheduleContext'; // 🔥 引入 Context
+import { useSchedule } from '../context/ScheduleContext';
 import { useNavigation } from '@react-navigation/native';
 
 export default function NotificationSettingPage() {
     const { theme, themeMode } = useTheme();
     const navigation = useNavigation<any>();
 
-    // 🔥 从 Context 获取真实配置
-    const { notificationConfig, updateNotificationConfig } = useSchedule();
+    // 🔥 从 Context 引入 sendTestNotification
+    const { notificationConfig, updateNotificationConfig, sendTestNotification } = useSchedule();
 
     const [showTimeModal, setShowTimeModal] = useState(false);
 
@@ -23,6 +23,21 @@ export default function NotificationSettingPage() {
             headerShadowVisible: false,
         });
     }, [navigation, theme]);
+
+    const handleToggleEnable = async (val: boolean) => {
+        updateNotificationConfig({ enabled: val });
+
+        // 🔥 如果是开启操作，立刻发送测试通知并弹窗引导
+        if (val) {
+            await sendTestNotification(); // 发送立即通知
+
+            Alert.alert(
+                "设置指引",
+                "请前往应用设置界面，找到通知管理（设置），打开你想要的悬浮，锁屏通知，然后在里面找到Miscellaneous的选项，在里面打开他的通知，按需选择打开悬浮通知，锁屏通知，还有声音。",
+                [{ text: "我知道了" }]
+            );
+        }
+    };
 
     const timeOptions = [
         { label: '上课时准点', value: 0 },
@@ -51,7 +66,7 @@ export default function NotificationSettingPage() {
                     right={() => (
                         <Switch
                             value={notificationConfig.enabled}
-                            onValueChange={(val) => updateNotificationConfig({ enabled: val })}
+                            onValueChange={handleToggleEnable} // 🔥 绑定新逻辑
                             color={theme.primary}
                         />
                     )}
@@ -97,9 +112,15 @@ export default function NotificationSettingPage() {
                         </Text>
                     </View>
 
-                    <Text style={{ textAlign: 'center', color: theme.subText, marginTop: 30, fontSize: 12 }}>
-                        注：请确保在系统设置中允许应用发送通知，否则设置将不生效。
-                    </Text>
+                    {/* 🔥 更新后的引导文字 */}
+                    <View style={{ padding: 10, marginTop: 20 }}>
+                        <Text style={{ color: theme.subText, fontSize: 12, lineHeight: 20 }}>
+                            请前往应用设置界面，找到通知管理（设置），打开你想要的悬浮，锁屏通知，然后在里面找到Miscellaneous的选项，在里面打开他的通知，按需选择打开悬浮通知，锁屏通知，还有声音。
+                        </Text>
+                        <Text style={{ color: theme.subText, fontSize: 12, lineHeight: 20, marginTop: 10 }}>
+                            同时请务必在“省电策略”中将本应用设置为“无限制”，并允许“自启动”，否则消息可能无法发出。
+                        </Text>
+                    </View>
                 </>
             )}
 
