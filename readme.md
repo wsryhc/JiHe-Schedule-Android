@@ -17,6 +17,11 @@
 </div>
 
 ---
+<div align="center">
+  <a href="https://wsryhc.top/jihe-schedule/">
+    <img src="https://img.shields.io/badge/官网-点击访问-blue?style=for-the-badge&logo=google-chrome" alt="Website">
+  </a>
+</div>
 
 ## 📖 简介 | Introduction
 
